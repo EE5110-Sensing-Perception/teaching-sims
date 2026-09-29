@@ -17,17 +17,22 @@ can run in lecture or self-paced lab.
 | [06 — FMCW radar](06-fmcw.md) | `teaching-sims demo fmcw` | 40–55 min |
 | [07 — Stripmap SAR](07-sar.md) | `teaching-sims demo sar` | 40–55 min |
 
-## IMU track
+## IMU track (MSc robotics)
 
-| Tutorial | Demo command | Time (approx.) |
-| --- | --- | --- |
-| [14 — MEMS comb-drive sensing](14-mems-accel.md) | `teaching-sims demo mems-accel` | 30–45 min |
-| [08 — Accelerometers](08-accelerometer.md) | `teaching-sims demo accelerometer` | 35–50 min |
-| [09 — Gyroscopes](09-gyroscope.md) | `teaching-sims demo gyroscope` | 35–50 min |
-| [10 — Attitude representations](10-attitude.md) | `teaching-sims demo attitude` | 35–50 min |
-| [11 — Complementary filter](11-complementary.md) | `teaching-sims demo complementary` | 40–55 min |
-| [12 — Magnetometer heading](12-magnetometer.md) | `teaching-sims demo magnetometer` | 35–50 min |
-| [13 — Strapdown INS](13-ins.md) | `teaching-sims demo ins` | 40–55 min |
+Built around 22 learning outcomes. See the
+[IMU learning outcomes and coverage map](IMU-learning-outcomes.md). The
+matching lecture deck is built with `make slides` (see the top-level README).
+
+| Tutorial | Demo command | Outcomes | Time (approx.) |
+| --- | --- | --- | --- |
+| [10 — Frames, rotations and kinematics](10-attitude.md) | `teaching-sims demo attitude` | LP1–5 | 50–65 min |
+| [14 — MEMS comb-drive accelerometer](14-mems-accel.md) | `teaching-sims demo mems-accel` | LP6 | 35–50 min |
+| [16 — MEMS Coriolis gyroscope](16-mems-gyro.md) | `teaching-sims demo mems-gyro` | LP8 | 35–50 min |
+| [08 — Accelerometers: errors, calibration, lever arm](08-accelerometer.md) | `teaching-sims demo accelerometer` | LP7, 10, 13, 22 | 45–60 min |
+| [09 — Gyroscopes: error models and Allan variance](09-gyroscope.md) | `teaching-sims demo gyroscope` | LP10–12, 21 | 45–60 min |
+| [12 — Magnetometer heading and calibration](12-magnetometer.md) | `teaching-sims demo magnetometer` | LP9, 13 | 35–50 min |
+| [11 — Attitude fusion: CF, Kalman, Mahony](11-complementary.md) | `teaching-sims demo complementary` | LP14–17 | 55–70 min |
+| [13 — Strapdown INS and aiding](13-ins.md) | `teaching-sims demo ins` | LP18–21 | 45–60 min |
 
 ## Before you start
 

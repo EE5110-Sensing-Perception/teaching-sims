@@ -17,15 +17,17 @@ Each script activates `.venv` and starts a demo. From the repo root:
 
 ### IMU
 
+In course order (see `tutorials/IMU-learning-outcomes.md`):
+
 ```bash
-./demos/mems-accel.sh --scenario impulse_ring
-./demos/accelerometer.sh --scenario static_tilt
-./demos/gyroscope.sh --scenario bias_ramp
-# tip: enable "Show 3D heading window" to compare truth vs gyro cubes
-./demos/attitude.sh --scenario gimbal_lock_scan
-./demos/complementary.sh --scenario balanced_sine
-./demos/magnetometer.sh --scenario pitched_needs_tc
-./demos/ins.sh --scenario accel_bias_straight
+./demos/attitude.sh --scenario ned_vs_ros          # also: order_matters, coning
+./demos/mems-accel.sh --scenario impulse_ring      # also: soft_vs_stiff
+./demos/mems-gyro.sh --scenario quadrature_bias    # also: mode_matched
+./demos/accelerometer.sh --scenario six_position_cal
+./demos/gyroscope.sh --scenario allan_industrial   # also: bias_instability
+./demos/magnetometer.sh --scenario iron_calibrated
+./demos/complementary.sh --scenario kalman_bias    # also: mahony_no_mag
+./demos/ins.sh --scenario error_budget             # also: zupt, position_fixes
 ```
 
 Or use the CLI:

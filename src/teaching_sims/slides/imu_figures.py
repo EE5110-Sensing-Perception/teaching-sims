@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib import font_manager  # noqa: E402
 
-from teaching_sims.core.allan import allan_deviation, read_noise_terms  # noqa: E402
+from teaching_sims.core.allan import allan_deviation  # noqa: E402
 from teaching_sims.core.imu_errors import GRADE_PRESETS, SensorErrorModel  # noqa: E402
 from teaching_sims.ui.palette import mpl  # noqa: E402
 
