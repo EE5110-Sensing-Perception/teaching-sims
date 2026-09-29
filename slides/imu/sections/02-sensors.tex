@@ -56,6 +56,46 @@
   \tryit{mems-accel}{soft\_vs\_stiff, vibration\_above\_bw, impulse\_ring, overdamped\_impulse}
 \end{frame}
 
+\begin{frame}{Accelerometers measure specific force \hfill \lp{7}}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \small
+      \[ \vect{f}^b = \mat{R}^{b}_{n}\,(\vect{a}^n - \vect{g}^n) \]
+      \begin{itemize}
+        \item Free fall: $\vect{f}=0$. At rest: $\vect{f}=-\vect{g}$ (up), i.e.\ $[0,0,-g]$ level in FRD.
+        \item Static tilt from the gravity direction:
+          \[ \phi=\operatorname{atan2}(-f_y,-f_z) \]
+          \[ \theta=\operatorname{atan2}\!\big(f_x,\sqrt{f_y^2+f_z^2}\big) \]
+        \item \textbf{Yaw is unobservable}: gravity is invariant to rotation about the vertical.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \includegraphics[width=\linewidth]{accel_disturbance_tilt.pdf}
+
+      \small A static accelerometer cannot tell a tilt $\delta\theta$ from a bias $b_x$, a forward acceleration $a_x$, or a lever-arm term. Each looks like $\approx g\,\delta\theta$.
+    \end{column}
+  \end{columns}
+  \tryit{accelerometer}{level\_plate, static\_tilt, bias\_tilts\_estimate, surge\_contaminates}
+\end{frame}
+
+\begin{frame}{Vibration and averaging \hfill \lp{7}}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \includegraphics[width=\linewidth]{accel_vibration_average.pdf}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \small
+      \begin{itemize}
+        \item Zero-mean vibration and noise average out: the error falls as $1/\sqrt{N}$.
+        \item Bias, sustained acceleration and lever-arm terms do \textbf{not} average out.
+        \item Large pitch: the horizontal axes lose sensitivity to roll, and near $\pm90^\circ$ the formula becomes fragile.
+        \item $\Rightarrow$ gravity is a good \emph{low-frequency} reference for tilt. We use this in the complementary filter.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \tryit{accelerometer}{vibration\_average, large\_pitch}
+\end{frame}
+
 \begin{frame}{Coriolis vibratory gyroscope \hfill \lp{8}}
   \begin{columns}[T]
     \begin{column}{0.44\textwidth}

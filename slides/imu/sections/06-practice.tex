@@ -1,0 +1,23 @@
+% Section F: practice (LP21-LP22).
+\section{In practice}
+
+\begin{frame}{Lever arm: where you mount the IMU matters \hfill \lp{22}}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \small
+      An IMU at offset $\vect{r}$ from the rotation centre measures
+      \[
+        \vect{f}_{\mathrm{IMU}} = \vect{f}_{\mathrm{c}} + \boldsymbol{\omega}\times(\boldsymbol{\omega}\times\vect{r}) + \dot{\boldsymbol{\omega}}\times\vect{r}
+      \]
+      \begin{itemize}
+        \item Centripetal $\omega^2 r$ points toward the axis: a spinning robot ``leans''.
+        \item Tangential $\dot\omega\, r$: every yaw acceleration kicks the reading.
+        \item Fix: mount near the centre, or compensate using the gyro rate and a calibrated $\vect{r}$. VIO/LIO pipelines estimate $\vect{r}$ online.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\linewidth]{lever_arm_tilt.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{accelerometer}{lever\_arm\_spin}
+\end{frame}

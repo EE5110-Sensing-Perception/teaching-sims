@@ -1,0 +1,54 @@
+% Section C: error models, characterisation and calibration (LP10-LP13).
+\section{Sensor errors and calibration}
+
+\begin{frame}{Deterministic errors \hfill \lp{10}}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \small
+      Measurement model for each triad (accelerometer or gyro):
+      \[
+        \tilde{\vect{y}} = (\mat{I}+\mat{S})\,\mat{M}\,\vect{y} + \vect{b} + \vect{n}
+      \]
+      \begin{itemize}
+        \item $\vect{b}$ \textbf{bias}: turn-on (changes every power cycle) plus in-run (drifts).
+        \item $\mat{S}$ \textbf{scale factor}: $\operatorname{diag}(s_x,s_y,s_z)$, in ppm or \%.
+        \item $\mat{M}$ \textbf{misalignment / non-orthogonality}: small off-diagonal terms, in mrad.
+        \item Also: gyro g-sensitivity, temperature, non-linearity.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \small
+      \begin{block}{Where they come from}
+        \begin{itemize}
+          \item Bias: electronics offset, mechanical rest offset, gyro quadrature leakage.
+          \item Scale: spring stiffness, gap, and gain tolerances.
+          \item Misalignment: die placement, package and PCB mounting.
+        \end{itemize}
+      \end{block}
+      \begin{alertblock}{Key point}
+        Scale and misalignment errors grow with the signal. A level accelerometer hides them. Tilt it and they appear.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+  \tryit{accelerometer}{scale\_misalignment}
+\end{frame}
+
+\begin{frame}{Six-position accelerometer calibration \hfill \lp{13}}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \small
+      \begin{enumerate}
+        \item Six static poses, each axis up and then down: $\vect{f}_k=\pm g\,\vect{e}_k$.
+        \item Average $N$ samples per pose.
+        \item Least squares per sensor axis $i$ (6 equations, 4 unknowns):
+          \[ \bar y_{k,i} = \vect{G}_i^\top \vect{f}_k + b_i \]
+        \item Apply $\hat{\vect{f}} = \hat{\mat{G}}^{-1}(\tilde{\vect{y}}-\hat{\vect{b}})$.
+      \end{enumerate}
+      \footnotesize Gyros: bias from a rest average. Scale needs a rate table.
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \includegraphics[width=\linewidth]{accel_six_position.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{accelerometer}{six\_position\_cal}
+\end{frame}

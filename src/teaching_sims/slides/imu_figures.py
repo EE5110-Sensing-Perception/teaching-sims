@@ -246,6 +246,102 @@ def fig_mems_accel_response() -> plt.Figure:
     return fig
 
 
+@figure("accel_disturbance_tilt")
+def fig_accel_disturbance_tilt() -> plt.Figure:
+    """Bias, surge and lever arm are indistinguishable from tilt for a static accelerometer."""
+    from teaching_sims.topics.accelerometer.physics import AccelParams, tilt_error_curve
+
+    d = np.linspace(-3, 3, 241)
+    c = tilt_error_curve(AccelParams(roll_deg=0.0, pitch_deg=0.0), d)
+    fig, ax = new_fig(h=2.9, w=4.6)
+    ax.plot(d, c["pitch_err_deg"], color=mpl("fused"))
+    ax.plot(d, np.degrees(d / 9.80665), color=mpl("reference"), ls="--", lw=1.0, label=r"small-angle $b/g$")
+    for x, txt in ((0.1, "consumer bias\n0.1 m/s$^2$ = 0.6$^\\circ$"), (1.0, "car accelerating\n1 m/s$^2$ = 5.8$^\\circ$")):
+        y = float(np.degrees(np.arctan(x / 9.80665)))
+        ax.plot([x], [y], "o", color=mpl("cursor"))
+        ax.annotate(txt, xy=(x, y), xytext=(x + 0.4, y - 7), fontsize=8,
+                    arrowprops=dict(arrowstyle="->", color="0.4"))
+    ax.set_xlabel(r"extra specific force along $x$ (m/s$^2$)")
+    ax.set_ylabel("pitch error (deg)")
+    ax.legend(loc="upper left")
+    return fig
+
+
+@figure("accel_vibration_average")
+def fig_accel_vibration_average() -> plt.Figure:
+    from teaching_sims.topics.accelerometer.physics import process
+    from teaching_sims.topics.accelerometer.scenarios import get_scenario
+
+    out = process(get_scenario("vibration_average").params)
+    t = out["t_s"]
+    fig, ax = new_fig(h=2.6, w=4.8)
+    ax.plot(t, out["pitch_est_deg"], color=mpl("measured"), lw=0.8, label="instantaneous")
+    ax.plot(t, out["pitch_avg_deg"], color=mpl("fused"), label="1 s moving average")
+    ax.axhline(get_scenario("vibration_average").params.pitch_deg, color=mpl("truth"), lw=1.2, label="truth")
+    ax.set_xlabel("t (s)")
+    ax.set_ylabel("pitch (deg)")
+    ax.set_ylim(-12, 22)
+    ax.legend(loc="upper center", fontsize=8, ncol=3, frameon=True, framealpha=0.9)
+    return fig
+
+
+@figure("accel_six_position")
+def fig_accel_six_position() -> plt.Figure:
+    from teaching_sims.topics.accelerometer.physics import (
+        gravity_specific_force_body,
+        measure,
+        six_position_calibration,
+        tilt_from_accel,
+    )
+    from teaching_sims.topics.accelerometer.scenarios import get_scenario
+
+    p = replace_params(get_scenario("six_position_cal").params, noise_mps2=0.02)
+    cal = six_position_calibration(p, samples_per_pose=300)
+    rng = np.random.default_rng(3)
+    ginv = np.linalg.inv(cal["gain"])
+    before, after = [], []
+    for _ in range(300):
+        roll, pitch = rng.uniform(-60, 60), rng.uniform(-60, 60)
+        q = replace_params(p, roll_deg=roll, pitch_deg=pitch)
+        f = gravity_specific_force_body(0.0, pitch, roll)
+        y = measure(q, f, rng, 50).mean(axis=0)
+        r0, p0 = tilt_from_accel(*y)
+        r1, p1 = tilt_from_accel(*(ginv @ (y - cal["bias"])))
+        before.append(np.hypot(r0 - roll, p0 - pitch))
+        after.append(np.hypot(r1 - roll, p1 - pitch))
+    fig, ax = new_fig(h=2.8, w=4.6)
+    bins = np.logspace(np.log10(min(after) * 0.8), np.log10(max(before) * 1.2), 40)
+    ax.set_xscale("log")
+    ax.hist(before, bins=bins, color=mpl("error"), alpha=0.8, label=f"raw: median {np.median(before):.2f}$^\\circ$")
+    ax.hist(after, bins=bins, color=mpl("fused"), alpha=0.9, label=f"calibrated: median {np.median(after):.2f}$^\\circ$")
+    ax.set_xlabel("tilt error over 300 random poses (deg)")
+    ax.set_ylabel("count")
+    ax.legend()
+    return fig
+
+
+@figure("lever_arm_tilt")
+def fig_lever_arm_tilt() -> plt.Figure:
+    from teaching_sims.topics.accelerometer.physics import AccelParams, process
+
+    rates = np.linspace(0, 180, 61)
+    fig, ax = new_fig(h=2.8, w=4.6)
+    for r, c in ((0.1, mpl("accel")), (0.3, mpl("gyro")), (0.5, mpl("fused"))):
+        err = [process(AccelParams(roll_deg=0, pitch_deg=0, noise_mps2=0.0, lever_x_m=r, yaw_rate_dps=float(w),
+                                   duration_s=1.0))["pitch_mean_deg"] for w in rates]
+        ax.plot(rates, err, color=c, label=f"IMU {r:.1f} m from spin axis")
+    ax.set_xlabel("yaw rate (deg/s)")
+    ax.set_ylabel("fake pitch (deg)")
+    ax.legend(loc="lower left", fontsize=8)
+    return fig
+
+
+def replace_params(p, **kw):
+    from dataclasses import replace
+
+    return replace(p, **kw)
+
+
 @figure("mems_gyro_modes")
 def fig_mems_gyro_modes() -> plt.Figure:
     """Mode split vs mode matched: sensitivity and rate bandwidth."""
