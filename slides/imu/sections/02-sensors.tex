@@ -160,3 +160,45 @@
   \end{columns}
   \tryit{mems-gyro}{mode\_matched, mode\_split, sine\_rate\_bandwidth}
 \end{frame}
+
+\begin{frame}{Magnetometer heading \hfill \lp{9}}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \small
+      Earth field in NED, from intensity $F$, dip $I$ and declination $D$:
+      \[ \vect{b}^n = F\,[\cos I\cos D,\ \cos I\sin D,\ \sin I] \]
+      \begin{itemize}
+        \item Level: $\psi_m=\operatorname{atan2}(-b_y,\,b_x)$.
+        \item Tilted: rotate $\vect{b}^b$ back to level with accel roll/pitch (\emph{tilt compensation}).
+        \item Dip $\approx65^\circ$: vertical $\approx2\times$ horizontal, so a small pitch error means a large heading error.
+        \item True heading $=\psi_m + D$ (declination from the WMM).
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \includegraphics[width=\linewidth]{mag_tilt_error.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{magnetometer}{pitched\_needs\_tc, dip\_side\_view, declination}
+\end{frame}
+
+\begin{frame}{Magnetic disturbances: detect and gate \hfill \lp{9}}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \small
+      \begin{itemize}
+        \item \textbf{Body-fixed} (hard and soft iron on the robot): calibratable, see the next section.
+        \item \textbf{World-fixed} (steel floors, rebar, parked cars): not calibratable, and they vary with position.
+        \item \textbf{Time-varying} (motor currents, actuators): separate the magnetometer physically, or model it against current.
+      \end{itemize}
+      Consistency checks before using a sample:
+      \[ \big|\,\|\vect b\| - F\,\big| < 5\%,\qquad |\hat I - I| < 3^\circ \]
+      If a check fails, skip the magnetometer update and let the gyro coast.
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \begin{alertblock}{Robotics reality}
+        \small Indoors, magnetometer heading is often unusable. Robots then rely on gyro + vision/LiDAR for yaw, which is why yaw is the hardest state to keep in VIO.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+  \tryit{magnetometer}{steel\_disturbance}
+\end{frame}

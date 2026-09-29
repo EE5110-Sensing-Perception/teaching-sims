@@ -131,3 +131,22 @@
   \end{columns}
   \tryit{accelerometer}{six\_position\_cal}
 \end{frame}
+
+\begin{frame}{Magnetometer calibration: the compass swing \hfill \lp{13}}
+  \begin{columns}[T]
+    \begin{column}{0.4\textwidth}
+      \small
+      \[ \tilde{\vect b} = \mat{S}\,\vect b + \vect h \]
+      \begin{itemize}
+        \item Hard iron shifts the locus; soft iron makes it an ellipse.
+        \item Swing $360^\circ$ \emph{level}; least-squares fit of $ax^2{+}bxy{+}cy^2{+}dx{+}ey{=}1$.
+        \item Correct: $\mat W(\tilde{\vect b}-\vect c)$ maps the ellipse onto a circle.
+        \item 3-D ellipsoid fit: tumble through all orientations.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.58\textwidth}
+      \includegraphics[width=\linewidth]{mag_iron_calibration.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{magnetometer}{hard\_iron, soft\_iron, iron\_calibrated}
+\end{frame}

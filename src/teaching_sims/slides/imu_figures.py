@@ -342,6 +342,57 @@ def replace_params(p, **kw):
     return replace(p, **kw)
 
 
+@figure("mag_tilt_error")
+def fig_mag_tilt_error() -> plt.Figure:
+    from teaching_sims.core.imu import wrap_180
+    from teaching_sims.topics.magnetometer.physics import MagParams, process
+
+    fig, ax = new_fig(h=2.8, w=4.8)
+    for pitch, c in ((10.0, mpl("mag")), (25.0, mpl("error"))):
+        out = process(MagParams(pitch_deg=pitch, noise_ut=0.0, n_sweep=180))
+        y = out["yaw_sweep_deg"]
+        ax.plot(y, wrap_180(out["heading_raw_deg"] - y), color=c, label=f"pitch {pitch:.0f}$^\\circ$, no tilt comp.")
+    out = process(MagParams(pitch_deg=25.0, noise_ut=0.0, n_sweep=180))
+    ax.plot(out["yaw_sweep_deg"], wrap_180(out["heading_tc_deg"] - out["yaw_sweep_deg"]), color=mpl("fused"),
+            label="pitch 25$^\\circ$, tilt-compensated")
+    ax.set_xlabel("true heading (deg)")
+    ax.set_ylabel("heading error (deg)")
+    ax.set_xticks([-180, -90, 0, 90, 180])
+    ax.legend(fontsize=8, loc="lower left")
+    return fig
+
+
+@figure("mag_iron_calibration")
+def fig_mag_iron_calibration() -> plt.Figure:
+    from teaching_sims.topics.magnetometer.physics import compass_swing, process
+    from teaching_sims.topics.magnetometer.scenarios import get_scenario
+
+    p = get_scenario("iron_calibrated").params
+    cal = compass_swing(p)
+    out = process(p, cal=cal)
+    raw = process(p)
+    fig, (a1, a2) = new_fig(2, 1, h=2.9, w=6.0)
+    a1.plot(out["bx"], out["by"], ".", color=mpl("measured"), ms=4, label="raw swing")
+    a1.plot(cal["ellipse_x"], cal["ellipse_y"], color=mpl("mag"), lw=1.5, label="fitted ellipse")
+    a1.plot(*cal["centre"], "o", color=mpl("cursor"), label="hard-iron centre")
+    a1.plot(out["bx_cal"], out["by_cal"], ".", color=mpl("fused"), ms=4, label="calibrated")
+    a1.set_aspect("equal")
+    a1.set_xlabel("$b_x$ ($\\mu$T)")
+    a1.set_ylabel("$b_y$ ($\\mu$T)")
+    a1.legend(fontsize=7, loc="upper left")
+    from teaching_sims.core.imu import wrap_180
+
+    y = raw["yaw_sweep_deg"]
+    a2.plot(y, wrap_180(raw["heading_tc_deg"] - y), color=mpl("error"), label=f"raw: RMS {raw['rms_err_deg']:.1f}$^\\circ$")
+    a2.plot(y, wrap_180(out["heading_cal_deg"] - y), color=mpl("fused"),
+            label=f"calibrated: RMS {out['rms_err_deg']:.1f}$^\\circ$")
+    a2.set_xticks([-180, -90, 0, 90, 180])
+    a2.set_xlabel("true heading (deg)")
+    a2.set_ylabel("heading error (deg)")
+    a2.legend(fontsize=8)
+    return fig
+
+
 @figure("mems_gyro_modes")
 def fig_mems_gyro_modes() -> plt.Figure:
     """Mode split vs mode matched: sensitivity and rate bandwidth."""

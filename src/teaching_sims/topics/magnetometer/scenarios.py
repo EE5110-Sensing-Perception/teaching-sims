@@ -14,6 +14,7 @@ class Scenario:
     teaching_point: str
     params: MagParams
     notes: str = ""
+    auto_calibrate: bool = False
 
 
 SCENARIOS: dict[str, Scenario] = {
@@ -54,6 +55,37 @@ SCENARIOS: dict[str, Scenario] = {
         title="Soft-iron distortion",
         teaching_point="Anisotropic soft-iron scales turn the locus into an ellipse - heading error varies with yaw.",
         params=MagParams(soft_xx=1.3, soft_yy=0.75, soft_xy=0.15, pitch_deg=0.0),
+        notes="Press 'Compass swing + fit' to calibrate.",
+    ),
+    "iron_calibrated": Scenario(
+        id="iron_calibrated",
+        title="Compass swing calibration",
+        teaching_point="A level 360 deg swing traces the ellipse; fitting it recovers hard and soft iron.",
+        params=MagParams(hard_x_ut=8.0, hard_y_ut=-5.0, soft_xx=1.2, soft_yy=0.85, soft_xy=0.1, pitch_deg=0.0),
+        notes="Fitted ellipse, its centre, and the corrected circle overlay the raw locus. Toggle Apply.",
+        auto_calibrate=True,
+    ),
+    "dip_side_view": Scenario(
+        id="dip_side_view",
+        title="Why pitch hurts: the dip angle",
+        teaching_point="At 66 deg dip the vertical field is 2x the horizontal: a little pitch leaks a lot into bx.",
+        params=MagParams(yaw_deg=0.0, pitch_deg=10.0, tilt_compensate=False),
+        notes="Side view: the field vector, its horizontal part, and body x. Try inclination 20 deg vs 75 deg.",
+    ),
+    "declination": Scenario(
+        id="declination",
+        title="Magnetic vs true north",
+        teaching_point="The magnetometer finds magnetic north; add the local declination for true heading.",
+        params=MagParams(declination_deg=-12.0, apply_declination=False, pitch_deg=0.0),
+        notes="Constant 12 deg error at every heading. Tick 'Apply declination'. (Cork ~ -3 deg; Seattle ~ +15 deg.)",
+    ),
+    "steel_disturbance": Scenario(
+        id="steel_disturbance",
+        title="Local disturbance (steel, motors)",
+        teaching_point="A world-fixed field distortion is not iron calibration: detect it via |B| and dip, then gate it.",
+        params=MagParams(dist_e_ut=8.0, dist_d_ut=-6.0, pitch_deg=0.0),
+        notes="Field check reports REJECT. Calibration cannot help: the error is outside the sensor.",
+        auto_calibrate=True,
     ),
 }
 
