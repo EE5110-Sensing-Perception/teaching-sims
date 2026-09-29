@@ -543,6 +543,92 @@ def fig_mahony_observability() -> plt.Figure:
     return fig
 
 
+# --- E. inertial navigation --------------------------------------------------------------
+
+
+@figure("ins_error_budget")
+def fig_ins_error_budget() -> plt.Figure:
+    """Simulated position error vs analytic references (log-log)."""
+    from teaching_sims.topics.ins.physics import process
+    from teaching_sims.topics.ins.scenarios import get_scenario
+
+    p = get_scenario("error_budget").params
+    out = process(p)
+    t = out["t_s"][1:]
+    fig, ax = new_fig(h=3.2, w=5.2)
+    roles = {"init velocity": "reference", "accel bias": "accel", "initial tilt": "mag",
+             "pitch gyro bias": "kalman", "yaw gyro bias": "gyro"}
+    laws = {"init velocity": r"$\delta v\,t$", "accel bias": r"$\frac{1}{2}b_a t^2$",
+            "initial tilt": r"$\frac{1}{2}g\,\delta\theta\,t^2$", "pitch gyro bias": r"$\frac{1}{6}g\,b_g t^3$",
+            "yaw gyro bias": r"$\frac{1}{2}v\,\varepsilon\,t^2$"}
+    for name, role in roles.items():
+        ref = out["references"][name][1:]
+        if np.any(ref > 0):
+            ax.loglog(t, ref, color=mpl(role), ls="--", lw=1.2, label=f"{name}: {laws[name]}")
+    ax.loglog(t, np.maximum(out["pos_err_m"][1:], 1e-4), color=mpl("error"), lw=2.4, label="simulated INS error")
+    ax.set_ylim(1e-3, 1e3)
+    ax.set_xlabel("t (s)")
+    ax.set_ylabel("position error (m)")
+    ax.legend(fontsize=7, loc="upper left")
+    return fig
+
+
+@figure("ins_aiding")
+def fig_ins_aiding() -> plt.Figure:
+    """Unaided vs ZUPT vs position fixes."""
+    from dataclasses import replace as _replace
+
+    from teaching_sims.topics.ins.physics import Aiding, process
+    from teaching_sims.topics.ins.scenarios import get_scenario
+
+    fig, (a1, a2) = new_fig(2, 1, h=2.9, w=6.2)
+    z = get_scenario("zupt").params
+    free = process(_replace(z, aiding=Aiding.NONE))
+    zupt = process(z)
+    fooled = process(get_scenario("zupt_false_detection").params)
+    t = free["t_s"]
+    a1.axvspan(30, t[-1], color=mpl("accel"), alpha=0.08, lw=0)
+    a1.text(31, 1, "parked", fontsize=8, color=mpl("accel"))
+    a1.plot(t, free["pos_err_m"], color=mpl("error"), label="unaided")
+    a1.plot(t, zupt["pos_err_m"], color=mpl("accel"), label="ZUPT (true stops)")
+    a1.plot(t, fooled["pos_err_m"], color=mpl("mag"), ls="--", label="ZUPT (IMU detector)")
+    a1.set_yscale("log")
+    a1.set_ylim(0.05, 500)
+    a1.set_xlabel("t (s)")
+    a1.set_ylabel("position error (m)")
+    a1.set_title("stop-and-go vehicle", loc="left", fontsize=9)
+    a1.legend(fontsize=7, loc="lower right")
+    pf = get_scenario("position_fixes").params
+    un = process(_replace(pf, aiding=Aiding.NONE))
+    fx = process(pf)
+    t2 = un["t_s"]
+    a2.plot(t2, un["pos_err_m"], color=mpl("error"), label="unaided")
+    a2.plot(t2, fx["pos_err_m"], color=mpl("fused"), label=f"fixes every {pf.fix_interval_s:.0f} s")
+    a2.set_xlabel("t (s)")
+    a2.set_ylabel("position error (m)")
+    a2.set_title("circle, gyro + accel bias", loc="left", fontsize=9)
+    a2.legend(fontsize=7)
+    return fig
+
+
+@figure("ins_grades")
+def fig_ins_grades() -> plt.Figure:
+    """One-minute unaided error per grade (calibrated turn-on bias)."""
+    from teaching_sims.topics.ins.physics import INSParams, PathProfile, params_for_grade, process
+
+    fig, ax = new_fig(h=2.8, w=4.8)
+    for key, c in (("consumer", mpl("error")), ("industrial", mpl("gyro")), ("tactical", mpl("accel"))):
+        p = params_for_grade(INSParams(profile=PathProfile.STRAIGHT, perfect_attitude=False, duration_s=120.0), key)
+        out = process(p)
+        ax.semilogy(out["t_s"][1:], np.maximum(out["pos_err_m"][1:], 1e-3), color=c,
+                    label=f"{GRADE_PRESETS[key].name}: {out['pos_err_m'][int(60 * p.fs_hz)]:.1f} m at 60 s")
+    ax.set_xlabel("t (s)")
+    ax.set_ylabel("position error (m)")
+    ax.set_title("Unaided INS, residual biases after calibration", loc="left", fontsize=9)
+    ax.legend(fontsize=7, loc="lower right")
+    return fig
+
+
 # --- C. errors and characterisation ------------------------------------------------
 
 
