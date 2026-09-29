@@ -74,6 +74,146 @@ def new_fig(ncols: int = 1, nrows: int = 1, w: float = FIG_W, h: float = FIG_H, 
     return fig, ax
 
 
+# --- A. frames and rotations ------------------------------------------------------
+
+_AX_RGB = ((0.86, 0.25, 0.25), (0.25, 0.65, 0.35), (0.2, 0.4, 0.85))
+
+
+def _ned_to_plot(v: np.ndarray) -> np.ndarray:
+    """NED -> matplotlib (x=E, y=N, z=Up)."""
+    v = np.asarray(v, dtype=float)
+    return np.stack([v[..., 1], v[..., 0], -v[..., 2]], axis=-1)
+
+
+def _draw_body(ax, r: np.ndarray, *, ghost: np.ndarray | None = None, axis_nav: np.ndarray | None = None) -> None:
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    half = np.array([0.8, 0.5, 0.18])
+    v = np.array([[sx, sy, sz] for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)], dtype=float) * half
+    faces = ((4, 5, 7, 6), (0, 1, 3, 2), (2, 3, 7, 6), (0, 1, 5, 4), (0, 2, 6, 4), (1, 3, 7, 5))
+    fills = [mpl("fused")] + [(0.75, 0.77, 0.82)] * 3 + [(0.6, 0.63, 0.7)] + [(0.75, 0.77, 0.82)]
+
+    def box(rr, alpha, edge, fill=True):
+        pts = _ned_to_plot(v @ rr.T)
+        polys = [[pts[i] for i in f] for f in faces]
+        pc = Poly3DCollection(polys, alpha=alpha, edgecolor=edge, linewidths=0.6)
+        pc.set_facecolor(fills if fill else (1, 1, 1, 0))
+        ax.add_collection3d(pc)
+
+    if ghost is not None:
+        box(ghost, 0.0, (0.6, 0.6, 0.6), fill=False)
+    box(r, 0.35, (0.3, 0.3, 0.35))
+    for k in range(3):
+        tip = _ned_to_plot(r[:, k] * 1.25)
+        ax.plot([0, tip[0]], [0, tip[1]], [0, tip[2]], color=_AX_RGB[k], lw=2)
+    if axis_nav is not None:
+        a = _ned_to_plot(axis_nav / np.linalg.norm(axis_nav) * 1.5)
+        ax.plot([-a[0], a[0]], [-a[1], a[1]], [-a[2], a[2]], color=mpl("cursor"), lw=2.2)
+    for k, lab in enumerate("NED"):
+        tip = _ned_to_plot(np.eye(3)[k] * 1.5)
+        ax.plot([0, tip[0]], [0, tip[1]], [0, tip[2]], color="0.6", lw=0.8)
+        ax.text(*(tip * 1.1), lab, color="0.45", fontsize=8)
+    ax.set_xlim(-1.3, 1.3)
+    ax.set_ylim(-1.3, 1.3)
+    ax.set_zlim(-1.3, 1.3)
+    ax.set_box_aspect((1, 1, 1), zoom=1.45)
+    ax.view_init(elev=22, azim=-30)
+    ax.set_axis_off()
+
+
+@figure("rotation_order")
+def fig_rotation_order() -> plt.Figure:
+    """Build ZYX vs roll-first XYZ with the same three angles."""
+    from teaching_sims.topics.attitude.physics import Sequence, sequence_frames
+
+    angles = (60.0, 30.0, 40.0)
+    rows = (
+        (Sequence.INTRINSIC_ZYX, "Z-Y$'$-X$''$ (yaw, pitch, roll)"),
+        (Sequence.INTRINSIC_XYZ, "X-Y$'$-Z$''$ (roll, pitch, yaw)"),
+    )
+    fig = plt.figure(figsize=(FIG_W, 3.5), constrained_layout=True)
+    ref = sequence_frames(*angles, Sequence.INTRINSIC_ZYX)["final"]
+    for ri, (seq, name) in enumerate(rows):
+        sf = sequence_frames(*angles, seq, n_per_stage=2)
+        snaps = [np.eye(3)] + [sf["frames"][2 * k + 1] for k in range(3)]
+        for ci, r in enumerate(snaps):
+            ax = fig.add_subplot(2, 4, ri * 4 + ci + 1, projection="3d")
+            axis = sf["axis_nav"][2 * (ci - 1) + 1] if ci > 0 else None
+            _draw_body(ax, r, ghost=ref if (ri == 1 and ci == 3) else None, axis_nav=axis)
+            if ci == 0:
+                ax.set_title(name, fontsize=8, loc="left")
+            else:
+                ax.set_title(sf["labels"][ci - 1], fontsize=8)
+    return fig
+
+
+@figure("gimbal_sensitivity")
+def fig_gimbal_sensitivity() -> plt.Figure:
+    from teaching_sims.topics.attitude.physics import euler_sensitivity_scan
+
+    pitches = np.linspace(-89.5, 89.5, 719)
+    s = euler_sensitivity_scan(30.0, 20.0, pitches, 0.5)
+    fig, ax = new_fig(h=3.0)
+    ax.semilogy(pitches, np.maximum(s["dyaw_deg"], 1e-4), color=mpl("gyro"), label=r"$|\Delta\psi|$ yaw")
+    ax.semilogy(pitches, np.maximum(s["droll_deg"], 1e-4), color=mpl("accel"), label=r"$|\Delta\phi|$ roll")
+    ax.semilogy(pitches, 0.5 * s["euler_rate_gain"], color=mpl("reference"), ls="--", lw=1.2,
+                label=r"$0.5^\circ/\cos\theta$")
+    ax.set_ylim(1e-2, 100)
+    ax.set_xlabel(r"pitch $\theta$ (deg)")
+    ax.set_ylabel("change in extracted angle (deg)")
+    ax.set_title(r"Extracted Euler change for a $0.5^\circ$ body rotation", loc="left")
+    ax.legend(loc="upper center")
+    return fig
+
+
+@figure("rate_integration")
+def fig_rate_integration() -> plt.Figure:
+    from teaching_sims.topics.attitude.physics import AttitudeParams, Integrator, integrate_attitude
+
+    base = dict(yaw_deg=0.0, pitch_deg=0.0, roll_deg=0.0, wz_dps=90.0, wx_dps=20.0, int_dt_s=0.05)
+    runs = (
+        ("first-order DCM", dict(integrator=Integrator.DCM_EULER), mpl("error"), dict(lw=4.0, alpha=0.6)),
+        ("first-order DCM + renorm.", dict(integrator=Integrator.DCM_EULER, renormalize=True), mpl("mag"),
+         dict(lw=1.8, ls="--")),
+        ("quaternion exp-map", dict(integrator=Integrator.QUAT_EXP, renormalize=True), mpl("fused"), dict(lw=2.0)),
+    )
+    fig, (a1, a2) = new_fig(2, 1, h=3.2)
+    for name, kw, c, style in runs:
+        out = integrate_attitude(AttitudeParams(**base, **kw))
+        a1.plot(out["t_s"], out["angle_err_deg"], color=c, label=name, **style)
+        a2.semilogy(out["t_s"], np.maximum(out["ortho_err"], 1e-16), color=c, label=name, **style)
+    a1.annotate("renormalising does not\nremove this error", xy=(7.0, 1.4), xytext=(1.0, 1.55),
+                fontsize=8, color=mpl("mag"), arrowprops=dict(arrowstyle="->", color=mpl("mag")))
+    a1.set_title("attitude error (deg)", loc="left")
+    a2.set_title(r"$\|R^\top R - I\|$", loc="left")
+    for a in (a1, a2):
+        a.set_xlabel("t (s)")
+    a1.legend(loc="upper left", fontsize=8)
+    return fig
+
+
+@figure("coning_dt")
+def fig_coning_dt() -> plt.Figure:
+    from teaching_sims.topics.attitude.physics import AttitudeParams, Integrator, integrate_attitude
+
+    dts = np.array([0.002, 0.005, 0.01, 0.02, 0.05, 0.1])
+    fig, ax = new_fig(h=2.8, w=4.6)
+    for amp, c in ((30.0, mpl("gyro")), (60.0, mpl("fused"))):
+        errs = [
+            integrate_attitude(
+                AttitudeParams(yaw_deg=0, pitch_deg=0, roll_deg=0, wz_dps=0.0, coning_amp_dps=amp, coning_hz=2.0,
+                               int_duration_s=5.0, int_dt_s=float(dt), integrator=Integrator.QUAT_EXP, renormalize=True)
+            )["final_angle_err_deg"]
+            for dt in dts
+        ]
+        ax.loglog(1.0 / dts, errs, "o-", color=c, label=f"coning amplitude {amp:.0f} deg/s")
+    ax.set_xlabel("integration rate (Hz)")
+    ax.set_ylabel("error after 5 s (deg)")
+    ax.set_title("Coning: exp-map with constant-rate steps", loc="left")
+    ax.legend()
+    return fig
+
+
 # --- C. errors and characterisation ------------------------------------------------
 
 

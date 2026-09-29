@@ -1,0 +1,203 @@
+% Section A: frames and rotations (LP1-LP5).
+\section{Frames and rotations}
+
+\begin{frame}{Three frames every robot needs \hfill \lp{1}}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{itemize}
+        \item \textbf{Sensor frame} $s$: the chip's printed axes.
+        \item \textbf{Body frame} $b$: fixed to the robot.\\
+          Mounting rotation $\mat{R}_{bs}$ and lever arm $\vect{r}$ come from the CAD model or a calibration.
+        \item \textbf{Navigation frame} $n$: local-level, fixed to the Earth (for a small area).
+      \end{itemize}
+      \vspace{0.5em}
+      Attitude $=$ the rotation $\mat{R}^n_b$ that takes body-frame vectors into the nav frame.
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \begin{block}{Why this matters}
+        \small Most IMU bugs in robotics are frame bugs: wrong axis order, a missing sign flip, or yaw from the wrong reference.
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Two conventions: aerospace vs ROS \hfill \lp{1}}
+  \begin{columns}[T]
+    \begin{column}{0.44\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=1.0, >=Stealth, thick]
+        \begin{scope}
+          \draw[->,gray] (0,0) -- (1.2,0) node[right] {\scriptsize E};
+          \draw[->,gray] (0,0) -- (0.7,0.7) node[above right] {\scriptsize N};
+          \draw[->,gray] (0,0) -- (0,-1.1) node[below] {\scriptsize D};
+          \node[above] at (0.3,1.0) {\footnotesize NED / FRD};
+          \draw[->,red!80!black] (0,0) -- (0.55,0.55);
+          \draw[->,green!50!black] (0,0) -- (0.9,-0.1);
+          \draw[->,blue!70!black] (0,0) -- (0.05,-0.8);
+        \end{scope}
+        \begin{scope}[xshift=2.6cm]
+          \draw[->,gray] (0,0) -- (1.2,0) node[right] {\scriptsize E};
+          \draw[->,gray] (0,0) -- (0.7,0.7) node[above right] {\scriptsize N};
+          \draw[->,gray] (0,0) -- (0,1.1) node[above] {\scriptsize U};
+          \node[above] at (0.3,1.35) {\footnotesize ENU / FLU};
+          \draw[->,red!80!black] (0,0) -- (0.55,0.55);
+          \draw[->,green!50!black] (0,0) -- (-0.9,0.1);
+          \draw[->,blue!70!black] (0,0) -- (-0.05,0.8);
+        \end{scope}
+      \end{tikzpicture}
+
+      \scriptsize body axes: \textcolor{red!80!black}{$x$} \textcolor{green!50!black}{$y$} \textcolor{blue!70!black}{$z$} (RGB = xyz, as in rviz)
+    \end{column}
+    \begin{column}{0.54\textwidth}
+      \small
+      \begin{itemize}
+        \item Aerospace: $n$ = \textbf{NED}, $b$ = \textbf{FRD} (forward, right, down)
+        \item ROS REP-103: $n$ = \textbf{ENU}, $b$ = \textbf{FLU} (forward, left, up)
+      \end{itemize}
+      \[
+        \mat{R}^{\mathrm{ENU}}_{\mathrm{FLU}} = \mat{T}\,\mat{R}^{\mathrm{NED}}_{\mathrm{FRD}}\,\mat{T}_b
+      \]
+      \[
+        \mat{T}=\begin{bmatrix}0&1&0\\1&0&0\\0&0&-1\end{bmatrix},\quad
+        \mat{T}_b=\operatorname{diag}(1,-1,-1)
+      \]
+    \end{column}
+  \end{columns}
+  \begin{alertblock}{A common bug}
+    \small ROS yaw is measured from \emph{East}, counter-clockwise: $\psi_{\mathrm{ROS}} = 90^\circ-\psi_{\mathrm{NED}}$. Nose-up pitch is \emph{negative}.
+  \end{alertblock}
+  \tryit{attitude}{ned\_vs\_ros}
+\end{frame}
+
+\begin{frame}{Representing attitude \hfill \lp{2}}
+  \footnotesize
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    Representation & Params & Good for & Watch out \\
+    \midrule
+    DCM $\mat{R}\in SO(3)$ & 9 (6 constr.) & composing, rotating vectors & drifts off $SO(3)$ \\
+    Euler ZYX $(\psi,\theta,\phi)$ & 3 & humans, logs, UIs & singular at $\theta=\pm90^\circ$ \\
+    Unit quaternion $\vect{q}$ & 4 (1 constr.) & propagation, no singularity & $\vect{q}\equiv-\vect{q}$ \\
+    Rotation vector $\alpha\hat{\vect{n}}$ & 3 & small errors, filter updates & wraps at $\pi$ \\
+    \bottomrule
+  \end{tabular}
+  \vspace{0.8em}
+
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{DCM columns are the body axes in nav:}
+      \[
+        \vect{v}^n = \mat{R}^n_b\,\vect{v}^b,\qquad
+        \mat{R}^n_b = \big[\,\vect{x}_b^n\;\vect{y}_b^n\;\vect{z}_b^n\,\big]
+      \]
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Quaternion from axis-angle:}
+      \[
+        \vect{q} = \begin{bmatrix}\cos\frac{\alpha}{2}\\ \hat{\vect{n}}\sin\frac{\alpha}{2}\end{bmatrix},\quad
+        \mat{R}(\vect{q}) = \mat{R}(-\vect{q})
+      \]
+    \end{column}
+  \end{columns}
+  \tryit{attitude}{level\_heading, pitch\_nose\_up, quat\_double\_cover}
+\end{frame}
+
+\begin{frame}{Composition order: rotations do not commute \hfill \lp{3}}
+  \begin{columns}[T]
+    \begin{column}{0.36\textwidth}
+      \small
+      Aerospace ZYX:
+      \[ \mat{R}^n_b = \mat{R}_z(\psi)\,\mat{R}_y(\theta)\,\mat{R}_x(\phi) \]
+      \begin{itemize}
+        \item \textbf{Intrinsic} Z-Y$'$-X$''$: each rotation is about the \emph{body's current} axis.
+        \item \textbf{Extrinsic} X-Y-Z about \emph{fixed} axes gives the same matrix.
+        \item Same angles, different order $\Rightarrow$ a different pose.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.62\textwidth}
+      \includegraphics[width=\linewidth]{rotation_order.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{attitude}{sequence\_intrinsic, intrinsic\_vs\_extrinsic, order\_matters}
+\end{frame}
+
+\begin{frame}{Gimbal lock is a coordinate problem \hfill \lp{4}}
+  \begin{columns}[T]
+    \begin{column}{0.4\textwidth}
+      \small
+      Euler rates from body rates:
+      \[
+        \begin{bmatrix}\dot\phi\\ \dot\theta\\ \dot\psi\end{bmatrix} =
+        \begin{bmatrix}
+          1 & s_\phi t_\theta & c_\phi t_\theta\\
+          0 & c_\phi & -s_\phi\\
+          0 & s_\phi/c_\theta & c_\phi/c_\theta
+        \end{bmatrix}\boldsymbol{\omega}
+      \]
+      \begin{itemize}
+        \item $1/\cos\theta$ blows up at $\theta=\pm90^\circ$.
+        \item Only $\psi\mp\phi$ is defined there.
+        \item The vehicle is fine; the \emph{parameterisation} fails.
+        \item $\Rightarrow$ propagate $\vect{q}$ or $\mat{R}$; show Euler only to humans.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.58\textwidth}
+      \includegraphics[width=\linewidth]{gimbal_sensitivity.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{attitude}{gimbal\_lock\_scan}
+\end{frame}
+
+\begin{frame}{Attitude kinematics \hfill \lp{5}}
+  \begin{columns}[T]
+    \begin{column}{0.42\textwidth}
+      \small
+      Continuous time (body rate $\boldsymbol{\omega}$ from the gyro):
+      \[
+        \dot{\mat{R}} = \mat{R}\,\skewm{\boldsymbol{\omega}},\qquad
+        \dot{\vect{q}} = \tfrac12\,\vect{q}\qmul\begin{bmatrix}0\\ \boldsymbol{\omega}\end{bmatrix}
+      \]
+      Discrete, $\boldsymbol{\omega}$ constant over $\Delta t$:
+      \[
+        \vect{q}_{k+1} = \vect{q}_k \qmul \exp\!\big(\tfrac12\boldsymbol{\omega}\Delta t\big)
+      \]
+      \begin{itemize}
+        \item First order $\mat{R}(\mat{I}+\skewm{\boldsymbol{\omega}}\Delta t)$ leaves $SO(3)$.
+        \item Renormalising fixes $\det\mat{R}$, \textbf{not} the accuracy.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.56\textwidth}
+      \includegraphics[width=\linewidth]{rate_integration.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{attitude}{dcm\_drift, dcm\_renormalized}
+\end{frame}
+
+\begin{frame}{Coning: why IMUs integrate internally at kHz \hfill \lp{5}}
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      \small
+      \begin{itemize}
+        \item If the rate vector \emph{rotates} within a step, then even the exact exp-map is wrong. It assumes $\boldsymbol{\omega}$ is constant.
+        \item Coning, for example $\boldsymbol{\omega}=[a\cos\Omega t,\,a\sin\Omega t,\,0]$, produces a net rotation about $z$ that sampled rates miss.
+        \item Tactical IMUs output $\Delta\boldsymbol{\theta}$ increments, with coning compensation computed at \SIrange{1}{10}{\kilo\hertz}.
+        \item \textbf{Practice:} use $\Delta\boldsymbol{\theta}$/$\Delta\vect{v}$ outputs when the IMU offers them.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.53\textwidth}
+      \includegraphics[width=\linewidth]{coning_dt.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{attitude}{coning}
+\end{frame}
+
+\begin{frame}{\checkq{} --- frames and rotations}
+  \begin{enumerate}
+    \item A ROS node publishes yaw $=0$. Which way is the robot pointing in NED?
+    \item Why is $\det\mat{R}=1$ required, and what does $\det\mat{R}=-1$ describe?
+    \item Rotate $30^\circ$ about body $x$, then $90^\circ$ about body $z$. Is that the same as doing it in the reverse order?
+    \item Your EKF propagates Euler angles on a quadrotor doing flips. What goes wrong?
+    \item Two quaternions differ only in sign. How must a filter handle this when averaging or computing an error?
+    \item Why does renormalising a DCM not make it accurate?
+  \end{enumerate}
+\end{frame}

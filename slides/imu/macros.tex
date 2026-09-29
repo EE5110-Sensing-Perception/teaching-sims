@@ -8,3 +8,13 @@
 \newcommand{\qmul}{\otimes}
 \newcommand{\demo}[2]{\texttt{teaching-sims demo #1 --scenario #2}}
 \newcommand{\lp}[1]{\textcolor{maroon}{\textbf{LP#1}}}
+% "Try it" pointer to a demo and its scenario ids (one compact bar).
+\newcommand{\tryit}[2]{%
+  \par\vfill
+  {\footnotesize\setlength{\fboxsep}{3pt}%
+  \colorbox{MutedGreen}{\parbox{\dimexpr\linewidth-2\fboxsep\relax}{%
+    \textcolor{MediumGreen!60!black}{\textbf{\mbox{Try it}}}\enspace
+    \texttt{teaching-sims demo #1}\enspace
+    \textcolor{MediumBlack!70}{scenarios:}\enspace\texttt{#2}}}}}
+% Check-your-understanding frame body.
+\newcommand{\checkq}{\textbf{Check your understanding}}

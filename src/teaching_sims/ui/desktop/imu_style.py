@@ -148,14 +148,33 @@ def draw_dial(
     dpg.draw_circle(center, 4, color=(200, 200, 210, 255), fill=(200, 200, 210, 255), parent=parent)
 
 
-# Isometric projection of a right-handed display frame (x right-ish, y into
-# the screen, z up). Callers map their navigation frame into this frame.
-_ISO_C = math.cos(math.radians(30.0))
-_ISO_S = math.sin(math.radians(30.0))
+class OrthoCamera:
+    """Orthographic view of NED space: Up is up on screen, no mirroring.
 
+    ``az_deg`` is the compass bearing *from the origin to the camera*;
+    ``el_deg`` is its elevation. The default camera sits east-south-east and
+    slightly above, so a north-heading vehicle is seen in profile (nose right).
+    """
 
-def iso_project(v: np.ndarray, origin: tuple[float, float], scale: float) -> tuple[float, float]:
-    x, y, z = (float(c) for c in v)
-    sx = (x - y) * _ISO_C
-    sy = (x + y) * _ISO_S - z
-    return (origin[0] + scale * sx, origin[1] + scale * sy)
+    def __init__(self, origin: tuple[float, float], scale: float, az_deg: float = 120.0, el_deg: float = 22.0) -> None:
+        self.origin = origin
+        self.scale = scale
+        az, el = math.radians(az_deg), math.radians(el_deg)
+        c = np.array([math.cos(el) * math.cos(az), math.cos(el) * math.sin(az), -math.sin(el)])
+        f = -c
+        right = np.cross(f, np.array([0.0, 0.0, -1.0]))
+        right /= np.linalg.norm(right)
+        self.right = right
+        self.up = np.cross(right, f)
+        self.toward = c
+
+    def project(self, p_ned) -> tuple[float, float]:
+        p = np.asarray(p_ned, dtype=float)
+        return (
+            self.origin[0] + self.scale * float(p @ self.right),
+            self.origin[1] - self.scale * float(p @ self.up),
+        )
+
+    def depth(self, p_ned) -> float:
+        """Larger = closer to the viewer."""
+        return float(np.asarray(p_ned, dtype=float) @ self.toward)
