@@ -9,3 +9,6 @@ build/
 *.png
 *.mp4
 .DS_Store
+fonts/
+slides/build/
+slides/figures/imu/

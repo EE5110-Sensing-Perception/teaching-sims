@@ -1,0 +1,29 @@
+% IMU & inertial navigation lecture deck (MSc Robotics).
+% Build from the repo root:  make slides
+\documentclass[aspectratio=169]{beamer}
+\usetheme{SimplePlus}
+
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,3d}
+\graphicspath{{slides/figures/imu/}}
+
+\input{slides/imu/macros.tex}
+
+\title{Inertial Sensing and Navigation}
+\subtitle{From MEMS proof masses to aided strapdown INS}
+\author{Brian Deegan}
+\institute{MSc Robotics}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\input{slides/imu/sections/00-outcomes.tex}
+
+\end{document}

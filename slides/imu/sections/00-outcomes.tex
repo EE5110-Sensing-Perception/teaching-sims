@@ -1,0 +1,86 @@
+% Learning outcomes and module map.
+\begin{frame}{Why inertial sensing matters in robotics}
+  \begin{itemize}
+    \item Every mobile robot carries an IMU: drones, legged robots, AGVs, manipulators on mobile bases.
+    \item It is the \textbf{only} sensor that is self-contained, high-rate (\SIrange{100}{2000}{\hertz}) and never ``loses track''.
+    \item But it measures \emph{derivatives} (rate, specific force), so errors integrate into drift.
+    \item The rest of the stack (VIO, LIO, GNSS/INS, legged-state estimation) exists to bound that drift.
+  \end{itemize}
+  \vfill
+  \begin{block}{Theme of the module}
+    Know what the sensor measures, how it is wrong, and how to fuse it so the errors stay bounded.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Learning outcomes}
+  \scriptsize\setlength{\itemsep}{0pt}
+  \begin{columns}[T]
+    \begin{column}{0.49\textwidth}
+      \textbf{A. Frames \& rotations}
+      \begin{itemize}
+        \item[\lp{1}] Sensor/body/nav frames; NED--FRD vs ENU--FLU (REP-103)
+        \item[\lp{2}] DCM, Euler, quaternion, axis-angle
+        \item[\lp{3}] Composition order; intrinsic vs extrinsic
+        \item[\lp{4}] Gimbal lock
+        \item[\lp{5}] Attitude kinematics \& integration
+      \end{itemize}
+      \textbf{B. Sensors}
+      \begin{itemize}
+        \item[\lp{6}] MEMS accelerometer dynamics
+        \item[\lp{7}] Specific force \& static tilt
+        \item[\lp{8}] Coriolis vibratory gyroscope
+        \item[\lp{9}] Magnetometer heading
+      \end{itemize}
+      \textbf{C. Errors \& calibration}
+      \begin{itemize}
+        \item[\lp{10}] Bias, scale factor, misalignment
+        \item[\lp{11}] ARW/VRW, bias instability, RRW
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \begin{itemize}
+        \item[\lp{12}] Allan variance; datasheet $\to$ model
+        \item[\lp{13}] Six-position \& magnetometer calibration
+      \end{itemize}
+      \textbf{D. Attitude estimation}
+      \begin{itemize}
+        \item[\lp{14}] Complementary filter as a frequency split
+        \item[\lp{15}] Mahony nonlinear attitude filter
+        \item[\lp{16}] Kalman filter with bias state; observability
+        \item[\lp{17}] When the gravity assumption fails
+      \end{itemize}
+      \textbf{E. Inertial navigation}
+      \begin{itemize}
+        \item[\lp{18}] Strapdown mechanization
+        \item[\lp{19}] Error growth: $t$, $t^2$, $t^3$
+        \item[\lp{20}] Aiding: ZUPT, position fixes
+      \end{itemize}
+      \textbf{F. Practice}
+      \begin{itemize}
+        \item[\lp{21}] Choosing an IMU grade
+        \item[\lp{22}] Lever arm
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Demos used in this module}
+  \small
+  All demos: \texttt{teaching-sims demo <name> [--scenario ID]}. Scenario IDs are given on each ``Try it'' slide.
+  \vspace{0.6em}
+
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Demo & Topic & Outcomes \\
+    \midrule
+    \texttt{attitude}      & Frames, rotations, kinematics      & \lp{1}--\lp{5} \\
+    \texttt{mems-accel}    & Proof-mass accelerometer           & \lp{6} \\
+    \texttt{mems-gyro}     & Coriolis vibratory gyro            & \lp{8} \\
+    \texttt{accelerometer} & Specific force, tilt, calibration  & \lp{7}, \lp{10}, \lp{13}, \lp{22} \\
+    \texttt{gyroscope}     & Integration, noise, Allan variance & \lp{10}--\lp{12}, \lp{21} \\
+    \texttt{magnetometer}  & Heading, tilt comp., iron cal.     & \lp{9}, \lp{13} \\
+    \texttt{complementary} & CF, Kalman, Mahony                 & \lp{14}--\lp{17} \\
+    \texttt{ins}           & Strapdown, error growth, aiding    & \lp{18}--\lp{21} \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
