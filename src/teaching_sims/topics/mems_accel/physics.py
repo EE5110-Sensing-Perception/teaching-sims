@@ -155,5 +155,42 @@ def simulate_mems(params: MEMSAccelParams) -> dict[str, object]:
     }
 
 
+K_BOLTZMANN = 1.380649e-23
+
+
+def frequency_response(params: MEMSAccelParams, f_hz: np.ndarray) -> dict[str, np.ndarray]:
+    """Reported-accel / true-accel versus frequency (1 at DC), and phase in deg.
+
+    The mechanical transfer X/A = -1/(s^2 + 2 zeta w0 s + w0^2); the open-loop
+    readout scales x by w0^2, so the normalised response is w0^2 / (w0^2 - w^2 + 2j zeta w0 w).
+    """
+    w = 2.0 * np.pi * np.asarray(f_hz, dtype=float)
+    w0 = params.omega0_rad_s
+    h = w0 * w0 / (w0 * w0 - w * w + 2j * params.zeta * w0 * w)
+    return {"f_hz": np.asarray(f_hz, dtype=float), "mag": np.abs(h), "phase_deg": np.angle(h, deg=True)}
+
+
+def bandwidth_hz(params: MEMSAccelParams) -> float:
+    """-3 dB frequency of the normalised response (closed form)."""
+    z2 = params.zeta**2
+    x = 1.0 - 2.0 * z2 + np.sqrt((1.0 - 2.0 * z2) ** 2 + 1.0)  # (w/w0)^2 where |H| = 1/sqrt(2)
+    return float(params.f0_hz * np.sqrt(x))
+
+
+def sensitivity_nm_per_g(params: MEMSAccelParams) -> float:
+    """Static proof-mass displacement per 1 g (nm)."""
+    return float(9.80665 / params.omega0_rad_s**2 * 1e9)
+
+
+def brownian_noise_ug_rthz(params: MEMSAccelParams, temp_k: float = 300.0) -> float:
+    """Thermo-mechanical (Brownian) noise floor sqrt(4 kB T c)/m in ug/sqrt(Hz)."""
+    a_n = np.sqrt(4.0 * K_BOLTZMANN * temp_k * params.damping_nsm) / params.mass_kg
+    return float(a_n / 9.80665e-6)
+
+
 def process(params: MEMSAccelParams) -> dict[str, object]:
-    return simulate_mems(params)
+    out = simulate_mems(params)
+    out["bandwidth_hz"] = bandwidth_hz(params)
+    out["sens_nm_per_g"] = sensitivity_nm_per_g(params)
+    out["brownian_ug_rthz"] = brownian_noise_ug_rthz(params)
+    return out

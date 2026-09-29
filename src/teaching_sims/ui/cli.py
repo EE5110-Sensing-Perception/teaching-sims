@@ -112,6 +112,13 @@ def _load_mems_accel():
     return list_scenarios, run_app
 
 
+def _load_mems_gyro():
+    from teaching_sims.topics.mems_gyro.scenarios import list_scenarios
+    from teaching_sims.ui.desktop.mems_gyro_app import run_app
+
+    return list_scenarios, run_app
+
+
 # Canonical topic id -> (aliases, loader)
 TOPICS: dict[str, tuple[tuple[str, ...], Callable]] = {
     "phased-array": (("phased-array", "phased_array"), _load_phased_array),
@@ -129,6 +136,7 @@ TOPICS: dict[str, tuple[tuple[str, ...], Callable]] = {
     "magnetometer": (("magnetometer", "mag", "heading"), _load_magnetometer),
     "ins": (("ins", "dead-reckoning", "strapdown"), _load_ins),
     "mems-accel": (("mems-accel", "mems_accel", "comb-drive", "mems"), _load_mems_accel),
+    "mems-gyro": (("mems-gyro", "mems_gyro", "coriolis", "vibratory-gyro"), _load_mems_gyro),
 }
 
 ALIAS_TO_TOPIC = {
@@ -146,12 +154,13 @@ RADAR_TOPICS = (
     "sar",
 )
 IMU_TOPICS = (
+    "attitude",
     "mems-accel",
+    "mems-gyro",
     "accelerometer",
     "gyroscope",
-    "attitude",
-    "complementary",
     "magnetometer",
+    "complementary",
     "ins",
 )
 

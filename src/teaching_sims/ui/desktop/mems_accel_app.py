@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-import time
+from dataclasses import replace
 
 import dearpygui.dearpygui as dpg
 import numpy as np
 
-from teaching_sims.topics.mems_accel.physics import Excitation, MEMSAccelParams, process
+from teaching_sims.topics.mems_accel.physics import Excitation, MEMSAccelParams, frequency_response, process
 from teaching_sims.topics.mems_accel.scenarios import SCENARIOS, get_scenario
+from teaching_sims.ui.desktop import imu_style
+from teaching_sims.ui.desktop.imu_style import bind_role
+from teaching_sims.ui.desktop.playback import Playback
 from teaching_sims.ui.desktop.plot_utils import fit_axes, fxy as _fxy
 
 
@@ -32,9 +35,10 @@ class MEMSAccelApp:
         self._presenter = False
         self._suppress = False
         self._out: dict[str, object] | None = None
-        self._playing = False
-        self._play_t0: float | None = None
-        self._play_speed = 0.03  # very slow-mo so impulse ring-down is visible
+        # very slow-mo so the impulse ring-down is visible
+        self.playback = Playback(
+            "mems", on_time=self._on_time, speed=0.03, speed_range=(0.005, 0.5), speed_label="Speed (x realtime)"
+        )
         if scenario_id:
             sc = get_scenario(scenario_id)
             self.params = sc.params
@@ -48,7 +52,9 @@ class MEMSAccelApp:
             )
 
     def _read_controls(self) -> MEMSAccelParams:
-        return MEMSAccelParams(
+        # replace() keeps fields without a widget (impulse time, sine amplitude, ...)
+        return replace(
+            self.params,
             excitation=EXC_LABELS[dpg.get_value("excitation")],
             a_const_mps2=float(dpg.get_value("a_const")),
             impulse_amp_mps2=float(dpg.get_value("imp_amp")),
@@ -58,6 +64,9 @@ class MEMSAccelApp:
             mech_offset_um=float(dpg.get_value("mech_off")),
             duration_s=float(dpg.get_value("duration")),
             gap0_um=float(dpg.get_value("gap0")),
+            kn_n_per_m=float(dpg.get_value("k_spring")),
+            mass_kg=float(dpg.get_value("mass_ug")) * 1e-9,
+            sine_hz=float(dpg.get_value("sine_hz")),
             fs_hz=20_000.0,
         )
 
@@ -73,6 +82,9 @@ class MEMSAccelApp:
             dpg.set_value("mech_off", p.mech_offset_um)
             dpg.set_value("duration", p.duration_s)
             dpg.set_value("gap0", p.gap0_um)
+            dpg.set_value("k_spring", p.kn_n_per_m)
+            dpg.set_value("mass_ug", p.mass_kg * 1e9)
+            dpg.set_value("sine_hz", p.sine_hz)
         finally:
             self._suppress = False
 
@@ -86,100 +98,38 @@ class MEMSAccelApp:
         dpg.set_value("banner_title", self._title)
         dpg.set_value("banner_body", self._note)
         dpg.set_value("scenario_text", self._note)
-        self._playing = False
+        self.playback.pause()
         self.refresh()
-        if self._out is not None:
-            self._set_view_time(0.0 if sc.id.startswith("impulse") or sc.id.startswith("over") else float(np.asarray(self._out["t_s"])[-1]))
-            if "impulse" in sc.id or sc.id.startswith("over"):
-                self._play()
+        self._auto_speed()
+        if self.params.excitation in (Excitation.IMPULSE, Excitation.STEP):
+            self.playback.play()
+        else:
+            self.playback.seek(self.playback.t_end)
 
     def _set_presenter(self, _s=None, app_data=None, _u=None) -> None:
         self._presenter = bool(app_data if app_data is not None else dpg.get_value("presenter_mode"))
         dpg.configure_item("advanced_controls", show=not self._presenter)
         dpg.configure_item("banner_panel", height=110 if self._presenter else 72)
-
-    def _play(self) -> None:
-        self._playing = True
-        self._sync_play_speed()
-        self._play_t0 = time.monotonic()
-        if dpg.does_item_exist("view_t"):
-            dpg.set_value("view_t", 0.0)
-
-    def _pause(self) -> None:
-        self._playing = False
-
-    def _sync_play_speed(self) -> None:
-        if dpg.does_item_exist("play_speed"):
-            self._play_speed = max(0.01, float(dpg.get_value("play_speed")))
-
-    def _on_play_speed(self, *_a, **_k) -> None:
-        if self._suppress:
-            return
-        self._sync_play_speed()
-        # Keep the current view time continuous when speed changes mid-play
-        if self._playing and self._play_t0 is not None and dpg.does_item_exist("view_t"):
-            t_now = float(dpg.get_value("view_t"))
-            if self._play_speed > 0:
-                self._play_t0 = time.monotonic() - t_now / self._play_speed
-
-    def _on_scrub(self, *_a, **_k) -> None:
-        if self._suppress or self._out is None:
-            return
-        self._playing = False
-        self._set_view_time(float(dpg.get_value("view_t")))
+        imu_style.apply_presenter(self._presenter)
 
     def _on_change(self, *_a, **_k) -> None:
         if self._suppress:
             return
-        self._playing = False
+        self.playback.pause()
         self.refresh()
 
-    def _index_at(self, t_query: float) -> int:
-        assert self._out is not None
-        t = np.asarray(self._out["t_s"], dtype=float)
-        t_query = float(np.clip(t_query, float(t[0]), float(t[-1])))
-        i = int(np.searchsorted(t, t_query, side="right") - 1)
-        return int(np.clip(i, 0, len(t) - 1))
+    def _auto_speed(self, seconds: float = 8.0) -> None:
+        """Pick a slow-motion factor so one playback lasts about ``seconds``."""
+        speed = self.params.duration_s / seconds
+        self.playback.speed = speed
+        if dpg.does_item_exist(self.playback.speed_tag):
+            dpg.set_value(self.playback.speed_tag, speed)
 
-    def _set_view_time(self, t_query: float) -> None:
+    def _on_time(self, i: int, _t: float) -> None:
         if self._out is None:
             return
-        t = np.asarray(self._out["t_s"], dtype=float)
-        i = self._index_at(t_query)
-        if dpg.does_item_exist("view_t"):
-            self._suppress = True
-            try:
-                dpg.set_value("view_t", float(t[i]))
-            finally:
-                self._suppress = False
         x_um = float(np.asarray(self._out["x_um"])[i])
         self._draw_comb(x_um, float(self.params.gap0_um))
-        ti = float(t[i])
-
-        def _cursor(tag: str, *series: str) -> None:
-            if not dpg.does_item_exist(tag):
-                return
-            ys = [np.asarray(self._out[s], dtype=float) for s in series]
-            y = np.concatenate(ys)
-            pad = 0.05 * (float(np.max(y)) - float(np.min(y)) + 1e-9)
-            dpg.set_value(tag, [[ti, ti], [float(np.min(y)) - pad, float(np.max(y)) + pad]])
-
-        _cursor("a_cursor", "a_ext_mps2", "a_meas_mps2")
-        _cursor("x_cursor", "x_um")
-        _cursor("c_cursor", "c1_fF", "c2_fF", "dc_fF")
-
-    def _tick(self) -> None:
-        if not self._playing or self._out is None:
-            return
-        t = np.asarray(self._out["t_s"], dtype=float)
-        if self._play_t0 is None:
-            self._play_t0 = time.monotonic()
-        elapsed = (time.monotonic() - self._play_t0) * self._play_speed
-        if elapsed >= float(t[-1]):
-            self._set_view_time(float(t[-1]))
-            self._playing = False
-            return
-        self._set_view_time(elapsed)
 
     def _draw_comb(self, x_um: float, gap0_um: float) -> None:
         if not dpg.does_item_exist("comb_draw"):
@@ -355,22 +305,30 @@ class MEMSAccelApp:
         dpg.set_value("dc_series", _fxy(t, out["dc_fF"]))
         fit_axes("a_t", "a_y", "x_t", "x_y", "c_t", "c_y")
 
-        if dpg.does_item_exist("view_t"):
-            self._suppress = True
-            try:
-                dpg.configure_item("view_t", max_value=float(np.asarray(t)[-1]))
-                if not self._playing:
-                    dpg.set_value("view_t", float(np.asarray(t)[-1]))
-            finally:
-                self._suppress = False
+        self.playback.set_times(np.asarray(t))
+        self.playback.set_cursor_span("a_cursor", out["a_ext_mps2"], out["a_meas_mps2"])
+        self.playback.set_cursor_span("x_cursor", out["x_um"])
+        self.playback.set_cursor_span("c_cursor", out["c1_fF"], out["c2_fF"], out["dc_fF"])
 
-        t_view = float(dpg.get_value("view_t")) if dpg.does_item_exist("view_t") else float(np.asarray(t)[-1])
-        self._set_view_time(t_view)
+        f = np.logspace(1, np.log10(50_000.0), 300)
+        fr = frequency_response(self.params, f)
+        dpg.set_value("bode_mag", _fxy(f, fr["mag"]))
+        dpg.set_value("bode_bw", [[out["bandwidth_hz"]], [1.0 / np.sqrt(2.0)]])
+        f_mark = self.params.sine_hz if self.params.excitation == Excitation.SINE else out["f0_hz"]
+        mark = frequency_response(self.params, np.array([f_mark]))["mag"][0]
+        dpg.set_value("bode_mark", [[float(f_mark)], [float(mark)]])
+        dpg.configure_item(
+            "bode_mark", label="sine drive" if self.params.excitation == Excitation.SINE else "f0"
+        )
+        fit_axes("bode_x", "bode_y")
 
         dpg.set_value(
             "status_text",
             (
-                f"Resonant f0 ~ {out['f0_hz']:.0f} Hz   zeta={out['zeta']:.2f}\n"
+                f"f0 = {out['f0_hz']:.0f} Hz   zeta = {out['zeta']:.2f}\n"
+                f"-3 dB bandwidth = {out['bandwidth_hz']:.0f} Hz\n"
+                f"Sensitivity = {out['sens_nm_per_g']:.1f} nm per g\n"
+                f"Brownian floor = {out['brownian_ug_rthz']:.1f} ug/sqrt(Hz)\n"
                 f"Final x={out['x_final_um']:+.3f} um   a_meas={out['a_meas_final']:+.2f} m/s^2\n"
                 f"Output bias={self.params.output_bias_mps2:+.2f}   mech offset={self.params.mech_offset_um:+.3f} um"
             ),
@@ -379,11 +337,7 @@ class MEMSAccelApp:
     def run(self) -> None:
         dpg.create_context()
         dpg.create_viewport(title="Teaching Sims - MEMS Comb-Drive Accelerometer", width=1520, height=980)
-        with dpg.theme() as global_theme:
-            with dpg.theme_component(dpg.mvAll):
-                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
-                dpg.add_theme_style(dpg.mvStyleVar_WindowRounding, 6)
-        dpg.bind_theme(global_theme)
+        imu_style.bind_base_theme()
 
         with dpg.window(tag="primary", label="MEMS accelerometer"):
             with dpg.child_window(tag="banner_panel", height=72, border=True):
@@ -399,26 +353,7 @@ class MEMSAccelApp:
                         callback=self._set_presenter,
                     )
                     dpg.add_separator()
-                    dpg.add_text("Playback")
-                    dpg.add_slider_float(
-                        tag="view_t",
-                        label="View time (s)",
-                        default_value=self.params.duration_s,
-                        min_value=0.0,
-                        max_value=self.params.duration_s,
-                        callback=self._on_scrub,
-                    )
-                    dpg.add_slider_float(
-                        tag="play_speed",
-                        label="Speed (x realtime)",
-                        default_value=self._play_speed,
-                        min_value=0.005,
-                        max_value=0.5,
-                        callback=self._on_play_speed,
-                    )
-                    with dpg.group(horizontal=True):
-                        dpg.add_button(label="Play", width=100, callback=lambda: self._play())
-                        dpg.add_button(label="Pause", width=100, callback=lambda: self._pause())
+                    self.playback.build_controls()
                     dpg.add_separator()
                     dpg.add_text("Excitation")
                     dpg.add_combo(
@@ -442,6 +377,15 @@ class MEMSAccelApp:
                         default_value=self.params.impulse_amp_mps2,
                         min_value=5.0,
                         max_value=80.0,
+                        callback=self._on_change,
+                    )
+                    dpg.add_text("Design trade (sensitivity vs bandwidth)")
+                    dpg.add_slider_float(
+                        tag="k_spring",
+                        label="Spring k (N/m)",
+                        default_value=self.params.kn_n_per_m,
+                        min_value=0.3,
+                        max_value=20.0,
                         callback=self._on_change,
                     )
                     dpg.add_slider_float(
@@ -475,7 +419,7 @@ class MEMSAccelApp:
                             tag="imp_w",
                             label="Impulse width (ms)",
                             default_value=self.params.impulse_width_s * 1e3,
-                            min_value=0.5,
+                            min_value=0.05,
                             max_value=10.0,
                             callback=self._on_change,
                         )
@@ -483,8 +427,24 @@ class MEMSAccelApp:
                             tag="duration",
                             label="Duration (s)",
                             default_value=self.params.duration_s,
-                            min_value=0.1,
+                            min_value=0.01,
                             max_value=0.6,
+                            callback=self._on_change,
+                        )
+                        dpg.add_slider_float(
+                            tag="mass_ug",
+                            label="Proof mass (ug)",
+                            default_value=self.params.mass_kg * 1e9,
+                            min_value=2.0,
+                            max_value=50.0,
+                            callback=self._on_change,
+                        )
+                        dpg.add_slider_float(
+                            tag="sine_hz",
+                            label="Sine freq (Hz)",
+                            default_value=self.params.sine_hz,
+                            min_value=10.0,
+                            max_value=8000.0,
                             callback=self._on_change,
                         )
                         dpg.add_slider_float(
@@ -510,7 +470,15 @@ class MEMSAccelApp:
                     dpg.add_text("", tag="status_text", wrap=310)
 
                 with dpg.child_window(border=False):
-                    dpg.add_drawlist(width=DRAW_W, height=DRAW_H, tag="comb_draw")
+                    with dpg.group(horizontal=True):
+                        dpg.add_drawlist(width=DRAW_W, height=DRAW_H, tag="comb_draw")
+                        with dpg.plot(label="Frequency response |a_meas / a_ext|", height=DRAW_H, width=-1):
+                            dpg.add_plot_legend()
+                            dpg.add_plot_axis(dpg.mvXAxis, label="f (Hz)", tag="bode_x", scale=dpg.mvPlotScale_Log10)
+                            with dpg.plot_axis(dpg.mvYAxis, label="gain", tag="bode_y", scale=dpg.mvPlotScale_Log10):
+                                dpg.add_line_series([10.0], [1.0], label="|H|", tag="bode_mag")
+                                dpg.add_scatter_series([1.0], [1.0], label="-3 dB", tag="bode_bw")
+                                dpg.add_scatter_series([1.0], [1.0], label="f0", tag="bode_mark")
                     with dpg.plot(label="External accel vs measured accel", height=200, width=-1):
                         dpg.add_plot_legend()
                         dpg.add_plot_axis(dpg.mvXAxis, label="t (s)", tag="a_t")
@@ -533,15 +501,31 @@ class MEMSAccelApp:
                             dpg.add_line_series([0.0], [0.0], label="C1-C2", tag="dc_series")
                             dpg.add_line_series([0.0, 0.0], [-1.0, 1.0], label="t cursor", tag="c_cursor")
 
+        for tag, role in (
+            ("a_ext", "truth"), ("a_meas", "accel"), ("x_series", "fused"),
+            ("c1_series", "gyro"), ("c2_series", "mag"), ("dc_series", "fused"), ("bode_mag", "accel"),
+        ):
+            bind_role(tag, role)
+        for tag in ("a_cursor", "x_cursor", "c_cursor"):
+            bind_role(tag, "cursor", weight=1.5)
+        bind_role("bode_bw", "error", kind="scatter", weight=4.0)
+        bind_role("bode_mark", "cursor", kind="scatter", weight=4.0)
+
         dpg.setup_dearpygui()
         dpg.show_viewport()
         dpg.set_primary_window("primary", True)
         self._push_controls(self.params)
         self.refresh()
-        while dpg.is_dearpygui_running():
-            self._tick()
-            dpg.render_dearpygui_frame()
-        dpg.destroy_context()
+        self._auto_speed()
+        if self.params.excitation in (Excitation.IMPULSE, Excitation.STEP):
+            self.playback.play()
+        try:
+            while dpg.is_dearpygui_running():
+                self.playback.tick()
+                dpg.render_dearpygui_frame()
+        finally:
+            dpg.destroy_context()
+            imu_style.reset_bindings()
 
 
 def run_app(scenario_id: str | None = None, params: MEMSAccelParams | None = None) -> None:

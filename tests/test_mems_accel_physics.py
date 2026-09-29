@@ -69,3 +69,25 @@ def test_impulse_rings_when_underdamped():
         return int(np.sum(s[1:] * s[:-1] < 0))
 
     assert crossings(under["x_um"]) > crossings(over["x_um"])
+
+
+def test_frequency_response_dc_gain_and_bandwidth():
+    from teaching_sims.topics.mems_accel.physics import bandwidth_hz, frequency_response
+
+    p = MEMSAccelParams(zeta=0.707)
+    fr = frequency_response(p, np.array([0.0, bandwidth_hz(p)]))
+    assert np.isclose(fr["mag"][0], 1.0)
+    assert np.isclose(fr["mag"][1], 1.0 / np.sqrt(2.0), rtol=1e-6)
+    # Butterworth damping: -3 dB at the natural frequency
+    assert np.isclose(bandwidth_hz(p), p.f0_hz, rtol=1e-3)
+
+
+def test_sensitivity_bandwidth_tradeoff():
+    from teaching_sims.topics.mems_accel.physics import bandwidth_hz, brownian_noise_ug_rthz, sensitivity_nm_per_g
+
+    soft = MEMSAccelParams(kn_n_per_m=0.5)
+    stiff = MEMSAccelParams(kn_n_per_m=8.0)
+    assert sensitivity_nm_per_g(soft) > sensitivity_nm_per_g(stiff)
+    assert bandwidth_hz(soft) < bandwidth_hz(stiff)
+    heavy = MEMSAccelParams(mass_kg=4e-8)
+    assert brownian_noise_ug_rthz(heavy) < brownian_noise_ug_rthz(MEMSAccelParams())

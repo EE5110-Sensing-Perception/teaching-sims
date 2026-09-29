@@ -214,6 +214,83 @@ def fig_coning_dt() -> plt.Figure:
     return fig
 
 
+# --- B. sensors -----------------------------------------------------------------------
+
+
+@figure("mems_accel_response")
+def fig_mems_accel_response() -> plt.Figure:
+    """Frequency response for soft vs stiff springs and two damping ratios."""
+    from teaching_sims.topics.mems_accel.physics import (
+        MEMSAccelParams,
+        bandwidth_hz,
+        frequency_response,
+        sensitivity_nm_per_g,
+    )
+
+    f = np.logspace(1, np.log10(40_000), 400)
+    fig, ax = new_fig(h=3.0, w=5.2)
+    cases = (
+        (0.5, 0.7, mpl("accel"), "-"),
+        (8.0, 0.7, mpl("gyro"), "-"),
+        (8.0, 0.1, mpl("gyro"), ":"),
+    )
+    for k, z, c, ls in cases:
+        p = MEMSAccelParams(kn_n_per_m=k, zeta=z)
+        ax.loglog(f, frequency_response(p, f)["mag"], color=c, ls=ls,
+                  label=f"k={k:g} N/m, $\\zeta$={z:g}: {sensitivity_nm_per_g(p):.0f} nm/g, BW {bandwidth_hz(p) / 1e3:.1f} kHz")
+    ax.axhline(1 / np.sqrt(2), color=mpl("reference"), lw=0.8, ls="--")
+    ax.set_ylim(1e-2, 8)
+    ax.set_xlabel("frequency (Hz)")
+    ax.set_ylabel(r"$|a_{\mathrm{meas}}/a_{\mathrm{ext}}|$")
+    ax.legend(loc="lower left", fontsize=8)
+    return fig
+
+
+@figure("mems_gyro_modes")
+def fig_mems_gyro_modes() -> plt.Figure:
+    """Mode split vs mode matched: sensitivity and rate bandwidth."""
+    from teaching_sims.topics.mems_gyro.physics import (
+        MEMSGyroParams,
+        rate_bandwidth_hz,
+        rate_frequency_response,
+        sensitivity_nm_per_dps,
+    )
+
+    f = np.logspace(-1, 3, 400)
+    fig, ax = new_fig(h=3.0, w=5.2)
+    for split, c in ((0.0, mpl("fused")), (100.0, mpl("mag")), (300.0, mpl("gyro"))):
+        p = MEMSGyroParams(sense_split_hz=split, q_sense=200.0)
+        g = np.abs(rate_frequency_response(p, f, include_lpf=False))
+        ax.loglog(f, g, color=c, label=f"split {split:.0f} Hz: {sensitivity_nm_per_dps(p) * 1e3:.0f} pm/(deg/s), "
+                                       f"BW {rate_bandwidth_hz(p, include_lpf=False):.0f} Hz")
+    ax.axhline(1 / np.sqrt(2), color=mpl("reference"), lw=0.8, ls="--")
+    ax.set_ylim(1e-2, 3)
+    ax.set_xlabel("rate input frequency (Hz)")
+    ax.set_ylabel("rate output / input")
+    ax.legend(loc="lower left", fontsize=8)
+    return fig
+
+
+@figure("mems_gyro_quadrature")
+def fig_mems_gyro_quadrature() -> plt.Figure:
+    """Bias from demodulator phase error with 200 deg/s-equivalent quadrature."""
+    from teaching_sims.topics.mems_gyro.physics import MEMSGyroParams, RateProfile, process
+
+    phis = np.linspace(-6, 6, 7)
+    meas = [process(MEMSGyroParams(profile=RateProfile.ZERO, quadrature_dps=200.0, demod_phase_err_deg=float(ph),
+                                   duration_s=0.15))["bias_dps"] for ph in phis]
+    fine = np.linspace(-6, 6, 200)
+    fig, ax = new_fig(h=2.8, w=4.2)
+    ax.plot(fine, -200.0 * np.sin(np.radians(fine)), color=mpl("reference"), lw=1.2,
+            label=r"$-\Omega_q \sin\varphi$")
+    ax.plot(phis, meas, "o", color=mpl("fused"), label="simulated")
+    ax.set_xlabel(r"demodulator phase error $\varphi$ (deg)")
+    ax.set_ylabel("rate bias (deg/s)")
+    ax.set_title(r"Quadrature $\Omega_q$ = 200 deg/s equivalent", loc="left")
+    ax.legend()
+    return fig
+
+
 # --- C. errors and characterisation ------------------------------------------------
 
 

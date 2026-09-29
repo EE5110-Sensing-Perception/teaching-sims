@@ -1,8 +1,10 @@
 # Tutorial 14 — MEMS comb-drive accelerometer (how IMU sensing works)
 
 **Demo:** `teaching-sims demo mems-accel`  
-**Prerequisites:** none (good first IMU lab before [08 — Accelerometers](08-accelerometer.md))  
-**Goal:** see how a spring–mass proof mass and capacitive comb fingers turn acceleration into a signal, and how **bias** vs **impulse** change that signal differently
+**Prerequisites:** [10 — Frames and rotations](10-attitude.md) helpful but not required  
+**Learning outcomes:** LP6, plus the sensor-level origin of bias (LP10) (see [IMU learning outcomes](IMU-learning-outcomes.md))  
+**Slides:** section B of the IMU deck  
+**Goal:** see how a spring–mass proof mass and capacitive comb fingers turn acceleration into a signal; how **bias** and an **impulse** change that signal differently; and why sensitivity, bandwidth and noise trade against each other
 
 ![MEMS comb-drive schematic](assets/mems-comb-drive.png)
 
@@ -39,6 +41,14 @@ Differential \(\Delta C=C_1-C_2\) grows with \(x\). Electronics convert \(\Delta
 | **Impulse** (underdamped) | Sharp kick on \(a_{\mathrm{ext}}\); \(x\) and \(a_{\mathrm{meas}}\) **ring** then decay |
 | **Impulse** (overdamped) | Same kick; mass returns **without** oscillation |
 
+### 1.4 Sensitivity, bandwidth and noise
+
+The normalised response \(|a_{\mathrm{meas}}/a_{\mathrm{ext}}| = \omega_0^2/|\omega_0^2-\omega^2+2j\zeta\omega_0\omega|\) is flat up to roughly \(f_0\).
+
+- **Sensitivity** \(x/a = 1/\omega_0^2\). A softer spring moves more per g, which is easier to sense, but lowers \(f_0\) and the bandwidth.
+- **Damping**: light damping gives a resonant peak, so vibration near \(f_0\) is *amplified*. Heavy damping rolls off early.
+- **Brownian noise floor**: \(a_n=\sqrt{4k_BTc}/m=\sqrt{4k_BT\omega_0/(mQ)}\). A heavier proof mass is quieter, which is why tactical-grade MEMS are physically bigger.
+
 A constant accel bias integrated in an INS becomes a velocity ramp and a quadratic position error (see [13 — INS](13-ins.md)). Here we stay at the sensor: how the MEMS structure itself responds.
 
 ---
@@ -48,7 +58,9 @@ A constant accel bias integrated in an INS becomes a velocity ramp and a quadrat
 | Element | Role |
 | --- | --- |
 | Comb schematic | Animated fingers / mass; scrub or Play to step through time |
-| Speed (x realtime) | Slow-mo playback (default ~0.03x); drag lower to inspect impulse ring-down |
+| Frequency response | \(|a_{\mathrm{meas}}/a_{\mathrm{ext}}|\) vs frequency; red = −3 dB point, yellow = \(f_0\) or the sine drive frequency |
+| Speed (x realtime) | Slow-motion playback, auto-set so one run lasts about 8 s |
+| Spring k | Sensitivity vs bandwidth trade (status shows nm/g, bandwidth, Brownian floor) |
 | \(a_{\mathrm{ext}}\) vs \(a_{\mathrm{meas}}\) | True frame accel vs reported signal |
 | Proof-mass \(x\) | Displacement in micrometers |
 | \(C_1\), \(C_2\), \(\Delta C\) | Comb capacitances (fF, teaching scale) |
@@ -95,6 +107,19 @@ A constant accel bias integrated in an INS becomes a velocity ramp and a quadrat
 1. Load **Constant acceleration**.
 2. Mass settles to a new position; \(a_{\mathrm{meas}}\) tracks \(a_{\mathrm{ext}}\) after the transient.
 
+### Experiment G — Sensitivity vs bandwidth (~5 min)
+
+1. Load **Soft spring: sensitive but slow**. Note the nm per g and the bandwidth in the status panel.
+2. Drag **Spring k** from 0.5 to 15 N/m. Sensitivity falls as \(1/k\) while the bandwidth rises as \(\sqrt{k}\).
+3. In **Advanced**, double the **Proof mass**. The Brownian floor falls.
+
+### Experiment H — Vibration above bandwidth (~4 min)
+
+1. Load **Vibration above bandwidth** (6 kHz sine).
+2. \(a_{\mathrm{meas}}\) is much smaller than \(a_{\mathrm{ext}}\), and phase-shifted.
+3. Sweep **Sine freq** through \(f_0\) with \(\zeta=0.12\): near resonance the sensor *over*-reports.
+4. Discuss: why do IMU datasheets specify an internal low-pass filter, and what happens to vibration above the ADC Nyquist rate?
+
 ---
 
 ## 4. Checkpoint questions
@@ -103,9 +128,11 @@ A constant accel bias integrated in an INS becomes a velocity ramp and a quadrat
 2. Why does an underdamped impulse produce a decaying sine on the output?
 3. How would a constant output bias behave after double integration in an INS?
 4. What does increasing \(\zeta\) do to the impulse response?
+5. You need a 5 kHz-bandwidth accelerometer for vibration monitoring. What does that imply for its sensitivity to 1 g, and for its noise?
+6. Why is a heavier proof mass quieter?
 
 ---
 
 ## 5. Next
 
-Continue with [08 — Accelerometers](08-accelerometer.md) (specific force and tilt), then gyros and fusion.
+Continue with [16 — MEMS gyroscope](16-mems-gyro.md), then [08 — Accelerometers](08-accelerometer.md) (specific force and tilt).
