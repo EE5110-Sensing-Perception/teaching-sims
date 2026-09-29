@@ -33,6 +33,85 @@
   \tryit{accelerometer}{scale\_misalignment}
 \end{frame}
 
+\begin{frame}{Stochastic errors and how they grow \hfill \lp{11}}
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      \footnotesize
+      \begin{tabular}{@{}lll@{}}
+        \toprule
+        Term & Unit & Heading error \\
+        \midrule
+        Bias $b$ & deg/h & $b\,t$ \\
+        ARW $N$ & deg/$\sqrt{\mathrm{h}}$ & $N\sqrt{t}$ \\
+        Bias inst.\ $B$ & deg/h & $\sim B\,t$ \\
+        RRW $K$ & deg/h/$\sqrt{\mathrm{h}}$ & $K\,t^{3/2}/\sqrt{3}$ \\
+        \bottomrule
+      \end{tabular}
+      \vspace{0.5em}
+      \begin{itemize}
+        \item Accelerometer analogues: VRW (m/s/$\sqrt{\mathrm{h}}$ or $\mu g/\sqrt{\mathrm{Hz}}$) and bias instability ($\mu g$).
+        \item Calibration removes the \emph{turn-on} bias. The in-run terms must be \textbf{estimated online}.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.53\textwidth}
+      \includegraphics[width=\linewidth]{gyro_error_growth.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{gyroscope}{angle\_random\_walk, bias\_instability, scale\_factor}
+\end{frame}
+
+\begin{frame}{Allan variance: the IMU fingerprint \hfill \lp{12}}
+  \begin{columns}[T]
+    \begin{column}{0.42\textwidth}
+      \small
+      \begin{enumerate}
+        \item Record at rest for hours; average in clusters of length $\tau$.
+        \item $\sigma_A^2(\tau) = \tfrac12\big\langle(\bar\omega_{k+1}-\bar\omega_k)^2\big\rangle$
+        \item Read the slopes on a log-log plot:
+      \end{enumerate}
+      \begin{itemize}
+        \item $-\tfrac12$: white noise, $N=\sigma_A(\SI{1}{s})$
+        \item $0$: bias instability, floor $=0.664\,B$
+        \item $+\tfrac12$: rate random walk, $K=\sigma_A(\SI{3}{s})$ on that line
+      \end{itemize}
+      \footnotesize Trust only $\tau \lesssim T/10$. A constant bias is invisible to Allan.
+    \end{column}
+    \begin{column}{0.56\textwidth}
+      \includegraphics[width=\linewidth]{allan_signatures.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{gyroscope}{allan\_industrial}
+\end{frame}
+
+\begin{frame}{From datasheet to simulation (and back) \hfill \lp{12}}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \scriptsize
+      \begin{tabular}{@{}lrrr@{}}
+        \toprule
+        Gyro & Consumer & Industr. & Tactical \\
+        \midrule
+        Turn-on bias (deg/h) & 3600 & 180 & 1 \\
+        ARW (deg/$\sqrt{\mathrm h}$) & 0.3 & 0.15 & 0.05 \\
+        Bias instab.\ (deg/h) & 20 & 3 & 0.5 \\
+        \midrule
+        Accel bias (mg) & 40 & 3 & 1 \\
+        Noise ($\mu g/\sqrt{\mathrm{Hz}}$) & 300 & 60 & 30 \\
+        \bottomrule
+      \end{tabular}
+
+      \vspace{0.6em}
+      \footnotesize Simulating at rate $f_s$:
+      \[ \sigma_{\omega}\,[\mathrm{deg/s}] = \tfrac{1}{60}\,N[\mathrm{deg}/\sqrt{\mathrm h}]\,\sqrt{f_s} \]
+      \[ b\,[\mathrm{deg/s}] = b\,[\mathrm{deg/h}]\,/\,3600 \]
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \includegraphics[width=\linewidth]{grade_allan.pdf}
+    \end{column}
+  \end{columns}
+  \tryit{gyroscope}{allan\_industrial (switch the IMU grade)}
+\end{frame}
+
 \begin{frame}{Six-position accelerometer calibration \hfill \lp{13}}
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}

@@ -45,9 +45,11 @@ def read_noise_terms(
     Only averaging times with at least ~10 independent clusters
     (tau <= T/10) are trusted. Within that range:
 
-    * N: fit a slope -1/2 line where the local slope is near -1/2; N = its value at tau = 1 s
-    * B: flat floor, B = min(adev) / 0.664
-    * K: fit a slope +1/2 line where the local slope is near +1/2; K = its value at tau = 3 s
+    * N: fit a slope -1/2 line to the short-tau run where the local slope is ~-1/2; N = its value at 1 s
+    * B: flat floor (median of the flat points), B = floor / 0.664
+
+    Expect +/-20 % scatter on B and K from a single record of a few hours.
+    * K: fit a slope +1/2 line to the long-tau run where the local slope is ~+1/2; K = its value at 3 s
 
     A term that is absent (no segment with that slope) is reported as NaN.
     """
@@ -61,20 +63,35 @@ def read_noise_terms(
     lt, la = np.log10(taus[ok]), np.log10(adev[ok])
     slope = np.gradient(la, lt)
 
-    def _fixed_slope(target: float, tau_ref: float) -> tuple[float, float]:
-        sel = np.abs(slope - target) < 0.15
+    def _fixed_slope(target: float, tau_ref: float, from_left: bool) -> tuple[float, float]:
+        sel = np.abs(slope - target) < 0.12
         if not np.any(sel):
             return float("nan"), float("nan")
+        # keep only the outermost contiguous run (short tau for N, long tau for K)
+        idx = np.nonzero(sel)[0]
+        run = [idx[0]] if from_left else [idx[-1]]
+        seq = idx if from_left else idx[::-1]
+        for k in seq[1:]:
+            if abs(k - run[-1]) == 1:
+                run.append(k)
+            else:
+                break
+        sel = np.zeros_like(sel)
+        sel[run] = True
         # intercept of a line with the fixed slope through the selected points
         c = float(np.mean(la[sel] - target * lt[sel]))
         return 10 ** (c + target * np.log10(tau_ref)), float(10 ** np.mean(lt[sel]))
 
-    n_val, tau_n = _fixed_slope(-0.5, 1.0)
-    k_val, tau_k = _fixed_slope(0.5, 3.0)
+    n_val, tau_n = _fixed_slope(-0.5, 1.0, from_left=True)
+    k_val, tau_k = _fixed_slope(0.5, 3.0, from_left=False)
+    # Floor: median over every flat (|slope| small) point; the bare minimum
+    # of a noisy curve, or the few-cluster points near T/10, are biased low.
     i_b = int(np.argmin(la))
+    flat = np.abs(slope) < 0.15
+    floor = 10 ** float(np.median(la[flat])) if np.any(flat) else 10 ** float(la[i_b])
     return {
         "N": n_val,
-        "B": float(10 ** la[i_b] / 0.664),
+        "B": float(floor / 0.664),
         "K": k_val,
         "tau_N": tau_n,
         "tau_B": float(10 ** lt[i_b]),

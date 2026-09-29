@@ -11,9 +11,10 @@ Stochastic terms and their Allan-deviation signatures:
 * bias instability ``B``     (units)           -> flat floor ~ 0.664 B            slope  0
 * rate random walk ``K``     (units/sqrt(s))   -> sigma_A(tau) = K sqrt(tau / 3)  slope +1/2
 
-Bias instability is approximated with a first-order Gauss-Markov process of
-standard deviation ``B``. Its Allan deviation peaks at ~0.62 B near
-tau ~ 1.9 T_c, which is close enough to the flicker-noise floor for teaching.
+Bias instability (flicker noise) is approximated by a sum of nine
+first-order Gauss-Markov processes with correlation times spaced by 3x around
+``bi_corr_time_s``. Each has sigma = 0.60 B, which puts the Allan floor at
+~0.664 B, flat over roughly three decades of tau.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from scipy.signal import lfilter
 
 from teaching_sims.core.imu import G0
 
@@ -66,6 +68,11 @@ def vrw_to_ug_rthz(vrw_mps_rth: float) -> float:
 
 # --- single-axis model ------------------------------------------------------------
 
+# Flicker (bias-instability) approximation: see module docstring.
+_FLICKER_N = 9
+_FLICKER_RATIO = 3.0
+_FLICKER_SIGMA = 0.60
+
 
 @dataclass(frozen=True)
 class SensorErrorModel:
@@ -74,8 +81,8 @@ class SensorErrorModel:
     bias: float = 0.0  # constant turn-on bias
     scale_factor_ppm: float = 0.0  # (meas - true)/true, parts per million
     white_density: float = 0.0  # N: units*sqrt(s)  (ARW / VRW)
-    bias_instability: float = 0.0  # B: Gauss-Markov sigma, units
-    bi_corr_time_s: float = 100.0  # Gauss-Markov correlation time
+    bias_instability: float = 0.0  # B: datasheet bias instability (Allan floor / 0.664), units
+    bi_corr_time_s: float = 300.0  # centre of the flicker band (s)
     rrw: float = 0.0  # K: units/sqrt(s)
 
     def __post_init__(self) -> None:
@@ -89,14 +96,16 @@ class SensorErrorModel:
         dt = 1.0 / fs
         b = np.full(n, self.bias, dtype=float)
         if self.bias_instability > 0:
-            phi = np.exp(-dt / self.bi_corr_time_s)
-            q = self.bias_instability * np.sqrt(1.0 - phi * phi)
-            w = rng.normal(0.0, 1.0, n)
-            gm = np.empty(n)
-            gm[0] = self.bias_instability * w[0]
-            for k in range(1, n):
-                gm[k] = phi * gm[k - 1] + q * w[k]
-            b += gm
+            for k in range(_FLICKER_N):
+                tc = self.bi_corr_time_s * _FLICKER_RATIO ** (k - (_FLICKER_N - 1) / 2)
+                phi = np.exp(-dt / tc)
+                q = np.sqrt(1.0 - phi * phi)
+                w = rng.normal(0.0, 1.0, n)
+                gm = np.empty(n)
+                gm[0] = w[0]  # stationary start
+                if n > 1:
+                    gm[1:], _ = lfilter([q], [1.0, -phi], w[1:], zi=[phi * w[0]])
+                b += _FLICKER_SIGMA * self.bias_instability * gm
         if self.rrw > 0:
             b += np.cumsum(rng.normal(0.0, self.rrw * np.sqrt(dt), n))
         return b

@@ -55,10 +55,13 @@ def test_allan_rate_random_walk_slope():
     assert abs(_slope(tau, ad, 10.0, 3000.0) - 0.5) < 0.1
 
 
-def test_gauss_markov_stationary_std():
-    m = SensorErrorModel(bias_instability=0.3, bi_corr_time_s=1.0)
-    b = m.bias_process(300_000, 100.0, np.random.default_rng(3))
-    assert np.isclose(np.std(b), 0.3, rtol=0.1)
+def test_bias_instability_allan_floor_is_0664_B():
+    fs, n = 5.0, int(5.0 * 6 * 3600)
+    m = SensorErrorModel(bias_instability=0.01, bi_corr_time_s=60.0)
+    y = m.apply(np.zeros(n), fs, np.random.default_rng(3))["meas"]
+    tau, ad = allan_deviation(y, fs)
+    terms = read_noise_terms(tau, ad, t_total=n / fs)
+    assert np.isclose(terms["B"], 0.01, rtol=0.25)
 
 
 def test_triad_misalignment_couples_axes():

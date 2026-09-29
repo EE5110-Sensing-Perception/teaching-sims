@@ -1,6 +1,25 @@
 % Section F: practice (LP21-LP22).
 \section{In practice}
 
+\begin{frame}{Choosing an IMU grade \hfill \lp{21}}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \includegraphics[width=\linewidth]{grade_heading_drift.pdf}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \small
+      \begin{itemize}
+        \item \textbf{Time between aiding updates?} Seconds (VIO, odometry) or minutes (GNSS outages).
+        \item \textbf{Dominant error over that horizon?} Read it off the Allan curve.
+        \item \textbf{Range and bandwidth}: max rate, $g$ range, vibration.
+        \item \textbf{Timing}: 200--1000 Hz, hardware timestamps, $\Delta\theta$ outputs.
+      \end{itemize}
+      \footnotesize Consumer MEMS is fine when aiding is frequent; tactical grade buys minutes of coasting.
+    \end{column}
+  \end{columns}
+  \tryit{gyroscope}{grade\_one\_minute}
+\end{frame}
+
 \begin{frame}{Lever arm: where you mount the IMU matters \hfill \lp{22}}
   \begin{columns}[T]
     \begin{column}{0.48\textwidth}

@@ -427,6 +427,54 @@ def fig_allan_signatures() -> plt.Figure:
     return fig
 
 
+@figure("gyro_error_growth")
+def fig_gyro_error_growth() -> plt.Figure:
+    """RMS heading error vs time for each error term alone (log-log)."""
+    from teaching_sims.topics.gyroscope.physics import GyroParams, MotionProfile, monte_carlo_errors
+
+    base = dict(profile=MotionProfile.CONSTANT, rate_dps=0.0, bias_dps=0.0, arw_deg_per_sqrt_s=0.0,
+                duration_s=600.0, fs_hz=10.0)
+    terms = (
+        (r"constant bias 10 deg/h $\;\propto t$", dict(bias_dps=10 / 3600), mpl("error"), 1),
+        (r"ARW 0.3 deg/$\sqrt{h}$ $\;\propto\sqrt{t}$", dict(arw_deg_per_sqrt_s=0.3 / 60), mpl("gyro"), 60),
+        (r"bias instab. 10 deg/h $\;\sim t$ (while correlated)",
+         dict(bias_instability_dps=10 / 3600, bi_corr_time_s=100.0), mpl("mag"), 60),
+        (r"RRW 30 deg/h/$\sqrt{h}$ $\;\propto t^{3/2}$", dict(rrw_dps_per_sqrt_s=30 / 216000), mpl("accel"), 60),
+    )
+    fig, ax = new_fig(h=3.1, w=5.0)
+    for label, kw, c, runs in terms:
+        p = GyroParams(**(base | kw))
+        e = monte_carlo_errors(p, n_runs=runs)
+        rms = np.sqrt(np.mean(e**2, axis=0))
+        t = (np.arange(e.shape[1]) + 1) / p.fs_hz
+        ax.loglog(t, rms, color=c, label=label)
+    ax.set_xlim(1, 600)
+    ax.set_ylim(1e-3, 5)
+    ax.set_xlabel("time (s)")
+    ax.set_ylabel("RMS heading error (deg)")
+    ax.legend(loc="upper left", fontsize=8)
+    return fig
+
+
+@figure("grade_heading_drift")
+def fig_grade_heading_drift() -> plt.Figure:
+    """Heading error over 10 min per grade, turn-on bias calibrated out (ensemble RMS)."""
+    from teaching_sims.topics.gyroscope.physics import GyroParams, MotionProfile, monte_carlo_errors, params_for_grade
+
+    fig, ax = new_fig(h=2.9, w=4.8)
+    for key, c in (("consumer", mpl("error")), ("industrial", mpl("gyro")), ("tactical", mpl("accel"))):
+        p = params_for_grade(GyroParams(profile=MotionProfile.CONSTANT, rate_dps=0.0, duration_s=600.0, fs_hz=10.0,
+                                        compensate_bias=True), key)
+        e = monte_carlo_errors(p, n_runs=40)
+        t = np.arange(e.shape[1]) / p.fs_hz / 60.0
+        ax.semilogy(t[1:], np.sqrt(np.mean(e**2, axis=0))[1:], color=c, label=GRADE_PRESETS[key].name)
+    ax.set_xlabel("time (min)")
+    ax.set_ylabel("RMS heading error (deg)")
+    ax.set_title("Turn-on bias calibrated; in-run errors remain", loc="left")
+    ax.legend(fontsize=8)
+    return fig
+
+
 @figure("grade_allan")
 def fig_grade_allan() -> plt.Figure:
     """Allan curves for the three grade presets (gyro)."""
