@@ -438,6 +438,111 @@ def fig_mems_gyro_quadrature() -> plt.Figure:
     return fig
 
 
+# --- D. attitude fusion ---------------------------------------------------------------
+
+
+@figure("cf_bode")
+def fig_cf_bode() -> plt.Figure:
+    from teaching_sims.topics.complementary.physics import crossover_hz, transfer_functions
+
+    dt = 0.01
+    f = np.logspace(-3, np.log10(50), 400)
+    fig, ax = new_fig(h=2.9, w=4.8)
+    for alpha, ls in ((0.9, ":"), (0.98, "-"), (0.998, "--")):
+        tf = transfer_functions(alpha, dt, f)
+        fc = crossover_hz(alpha, dt)
+        ax.loglog(f, tf["lowpass"], color=mpl("accel"), ls=ls)
+        ax.loglog(f, tf["highpass"], color=mpl("gyro"), ls=ls)
+        ax.axvline(fc, color=mpl("fused"), ls=ls, lw=0.9)
+        ax.text(fc * 1.1, 2e-3, f"$\\alpha$={alpha}", rotation=90, fontsize=7, color=mpl("fused"))
+    ax.plot([], [], color=mpl("accel"), label="accel path (low-pass)")
+    ax.plot([], [], color=mpl("gyro"), label="gyro path (high-pass)")
+    ax.set_ylim(1e-3, 2)
+    ax.set_xlabel("frequency (Hz)")
+    ax.set_ylabel("gain")
+    ax.legend(fontsize=8, loc="lower left")
+    return fig
+
+
+@figure("cf_kf_compare")
+def fig_cf_kf_compare() -> plt.Figure:
+    from teaching_sims.topics.complementary.physics import process
+    from teaching_sims.topics.complementary.scenarios import get_scenario
+
+    p = get_scenario("kalman_bias").params
+    out = process(p)
+    t = out["t_s"]
+    fig, (a1, a2) = new_fig(1, 2, h=3.4, w=5.2, sharex=True)
+    a1.plot(t, out["err_accel_deg"], color=mpl("accel"), lw=0.6, alpha=0.7, label="accel only")
+    a1.plot(t, out["err_comp_deg"], color=mpl("fused"), lw=1.2, label=f"CF (RMS {out['rms_comp_deg']:.2f})")
+    a1.plot(t, out["err_kf_deg"], color=mpl("kalman"), lw=1.2, label=f"KF (RMS {out['rms_kf_deg']:.2f})")
+    a1.set_ylim(-4, 4)
+    a1.set_ylabel("pitch error (deg)")
+    a1.legend(fontsize=7, ncol=3, loc="upper right")
+    s = 2 * out["kf_bias_sigma_dps"]
+    a2.fill_between(t, out["kf_bias_dps"] - s, out["kf_bias_dps"] + s, color=mpl("kalman"), alpha=0.2)
+    a2.plot(t, out["kf_bias_dps"], color=mpl("kalman"), label="KF bias estimate $\\pm2\\sigma$")
+    a2.axhline(p.gyro_bias_dps, color=mpl("truth"), lw=1.2, label="true bias")
+    a2.set_ylim(-0.5, 2.0)
+    a2.set_xlabel("t (s)")
+    a2.set_ylabel("deg/s")
+    a2.legend(fontsize=7, loc="lower right")
+    return fig
+
+
+@figure("surge_gating")
+def fig_surge_gating() -> plt.Figure:
+    from dataclasses import replace as _replace
+
+    from teaching_sims.topics.complementary.physics import process
+    from teaching_sims.topics.complementary.scenarios import get_scenario
+
+    p = get_scenario("surge_gated").params
+    raw = process(_replace(p, gate_accel=False))
+    gated = process(p)
+    t = raw["t_s"]
+    fig, ax = new_fig(h=2.7, w=4.8)
+    ax.axvspan(p.surge_start_s, p.surge_start_s + p.surge_dur_s, color=mpl("error"), alpha=0.08, lw=0)
+    ax.text(p.surge_start_s + 0.2, 13, "4 m/s$^2$ surge", fontsize=8, color=mpl("error"))
+    ax.plot(t, raw["err_comp_deg"], color=mpl("error"), label=f"CF, no gating (RMS {raw['rms_comp_deg']:.1f})")
+    ax.plot(t, gated["err_comp_deg"], color=mpl("fused"), label=f"CF, gated (RMS {gated['rms_comp_deg']:.1f})")
+    passed = (t >= p.surge_start_s) & (t < p.surge_start_s + p.surge_dur_s) & gated["accel_used"]
+    if np.any(passed):
+        t_leak = float(t[passed][len(t[passed]) // 2])
+        ax.annotate("tilt cancels |f| change:\nspoofed samples pass the gate", xy=(t_leak, 12), xytext=(8.6, 18),
+                    fontsize=7, arrowprops=dict(arrowstyle="->", color="0.4"))
+    ax.set_xlabel("t (s)")
+    ax.set_ylabel("pitch error (deg)")
+    ax.set_ylim(-5, 26)
+    ax.legend(fontsize=8, loc="upper left")
+    return fig
+
+
+@figure("mahony_observability")
+def fig_mahony_observability() -> plt.Figure:
+    from teaching_sims.topics.complementary.mahony import MahonyParams, simulate_mahony
+
+    a = simulate_mahony(MahonyParams(use_mag=False))
+    b = simulate_mahony(MahonyParams(use_mag=True))
+    t = a["t_s"]
+    fig, (a1, a2) = new_fig(2, 1, h=2.8, w=6.0)
+    a1.plot(t, a["euler_err_deg"][:, 0], color=mpl("error"), label="yaw, no mag")
+    a1.plot(t, b["euler_err_deg"][:, 0], color=mpl("mag"), label="yaw, with mag")
+    a1.plot(t, a["euler_err_deg"][:, 1], color=mpl("gyro"), lw=1.0, label="pitch (either)")
+    a1.set_xlabel("t (s)")
+    a1.set_ylabel("error (deg)")
+    a1.legend(fontsize=7)
+    a2.plot(t, a["bias_est_dps"][:, 2], color=mpl("error"), label="$\\hat b_z$, no mag")
+    a2.plot(t, b["bias_est_dps"][:, 2], color=mpl("mag"), label="$\\hat b_z$, with mag")
+    a2.plot(t, a["bias_est_dps"][:, 0], color=mpl("accel"), lw=1.0, label="$\\hat b_x$ (either)")
+    a2.axhline(a["bias_true_dps"][2], color=mpl("truth"), lw=0.8, ls="--")
+    a2.axhline(a["bias_true_dps"][0], color=mpl("truth"), lw=0.8, ls="--")
+    a2.set_xlabel("t (s)")
+    a2.set_ylabel("bias (deg/s)")
+    a2.legend(fontsize=7)
+    return fig
+
+
 # --- C. errors and characterisation ------------------------------------------------
 
 

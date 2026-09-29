@@ -132,7 +132,7 @@ TOPICS: dict[str, tuple[tuple[str, ...], Callable]] = {
     "accelerometer": (("accelerometer", "accel"), _load_accelerometer),
     "gyroscope": (("gyroscope", "gyro"), _load_gyroscope),
     "attitude": (("attitude", "rotations", "dcm"), _load_attitude),
-    "complementary": (("complementary", "comp-filter", "ahrs-lite"), _load_complementary),
+    "complementary": (("complementary", "comp-filter", "ahrs-lite", "fusion", "mahony", "kalman"), _load_complementary),
     "magnetometer": (("magnetometer", "mag", "heading"), _load_magnetometer),
     "ins": (("ins", "dead-reckoning", "strapdown"), _load_ins),
     "mems-accel": (("mems-accel", "mems_accel", "comb-drive", "mems"), _load_mems_accel),

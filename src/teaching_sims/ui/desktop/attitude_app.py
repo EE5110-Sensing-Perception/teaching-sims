@@ -24,7 +24,7 @@ from teaching_sims.topics.attitude.physics import (
 )
 from teaching_sims.topics.attitude.scenarios import SCENARIOS, get_scenario
 from teaching_sims.ui.desktop import imu_style
-from teaching_sims.ui.desktop.imu_style import OrthoCamera, bind_role
+from teaching_sims.ui.desktop.imu_style import OrthoCamera, bind_role, draw_body_box
 from teaching_sims.ui.desktop.playback import Playback
 from teaching_sims.ui.desktop.plot_utils import fit_axes, fxy as _fxy
 
@@ -46,24 +46,8 @@ LABEL_FOR_INT = {v: k for k, v in INT_LABELS.items()}
 # Body axis colors follow the robotics RGB = xyz convention (rviz).
 AXIS_COLORS = ((240, 85, 85, 255), (95, 210, 120, 255), (90, 150, 245, 255))
 NAV_COLOR = (170, 170, 180, 255)
-GHOST_COLOR = (200, 200, 210, 110)
+GHOST_COLOR = imu_style.GHOST_COLOR
 HIGHLIGHT = imu_style.rgba("cursor")
-
-# Vehicle-like slab in body FRD coordinates (x fwd, y right, z down).
-BOX_HALF = np.array([0.8, 0.5, 0.18])
-_BOX_V = np.array([[sx, sy, sz] for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)], dtype=float) * BOX_HALF
-_BOX_FACES = (
-    ((4, 5, 7, 6), "nose"),
-    ((0, 1, 3, 2), "tail"),
-    ((2, 3, 7, 6), "right"),
-    ((0, 1, 5, 4), "left"),
-    ((0, 2, 6, 4), "top"),  # z = -half: up in FRD
-    ((1, 3, 7, 5), "bottom"),
-)
-_FACE_FILL = {
-    "nose": (240, 95, 155, 150),
-    "top": (120, 130, 150, 120),
-}
 
 
 class AttitudeApp:
@@ -226,18 +210,7 @@ class AttitudeApp:
             dpg.draw_text((10, 30), "ghost = reference pose", color=GHOST_COLOR[:3] + (255,), size=14, parent=tag)
 
     def _draw_box(self, tag: str, r: np.ndarray, *, wire_only: bool = False) -> None:
-        cam = self.cam
-        verts = _BOX_V @ r.T
-        if wire_only:
-            for idx, _ in _BOX_FACES:
-                pts = [cam.project(verts[i]) for i in idx]
-                dpg.draw_polygon(pts + [pts[0]], color=GHOST_COLOR, thickness=1.5, parent=tag)
-            return
-        faces = sorted(_BOX_FACES, key=lambda f: np.mean([cam.depth(verts[i]) for i in f[0]]))
-        for idx, name in faces:
-            pts = [cam.project(verts[i]) for i in idx]
-            fill = _FACE_FILL.get(name, (90, 95, 110, 90))
-            dpg.draw_polygon(pts + [pts[0]], color=(210, 210, 220, 200), fill=fill, thickness=1.5, parent=tag)
+        draw_body_box(tag, self.cam, r, wire_only=wire_only)
 
     def _draw_dcm(self, r: np.ndarray, subtitle: str = "") -> None:
         tag = "dcm_draw"

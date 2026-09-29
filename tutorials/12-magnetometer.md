@@ -101,7 +101,7 @@ and reject the sample if either check fails, letting the gyro coast.
 
 1. Load **Hard-iron offset**. The locus is a shifted circle.
 2. Load **Soft-iron distortion**. The locus is a tilted ellipse, and the error varies with heading.
-3. Load **Compass swing calibration**. The fitted ellipse, the centre at (8, −5) µT and the calibrated circle appear, and the RMS error falls from about 10° to under 1°.
+3. Load **Compass swing calibration**. The fitted ellipse, the centre at (8, −5) µT and the calibrated circle appear, and the RMS error falls from about 20° to under 1°.
 4. Untick **Apply calibration** to compare.
 
 ### Experiment D — Disturbances (~5 min)

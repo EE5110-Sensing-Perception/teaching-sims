@@ -178,3 +178,35 @@ class OrthoCamera:
     def depth(self, p_ned) -> float:
         """Larger = closer to the viewer."""
         return float(np.asarray(p_ned, dtype=float) @ self.toward)
+
+
+# --- 3-D body box (vehicle-like slab in FRD body axes) --------------------------------
+
+BOX_HALF = np.array([0.8, 0.5, 0.18])
+_BOX_V = np.array([[sx, sy, sz] for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)], dtype=float) * BOX_HALF
+_BOX_FACES = (
+    ((4, 5, 7, 6), "nose"),
+    ((0, 1, 3, 2), "tail"),
+    ((2, 3, 7, 6), "right"),
+    ((0, 1, 5, 4), "left"),
+    ((0, 2, 6, 4), "top"),  # z = -half: up in FRD
+    ((1, 3, 7, 5), "bottom"),
+)
+_FACE_FILL = {"nose": (240, 95, 155, 150), "top": (120, 130, 150, 120)}
+GHOST_COLOR = (200, 200, 210, 110)
+
+
+def draw_body_box(parent: str, cam: OrthoCamera, r: np.ndarray, *, wire_only: bool = False,
+                  wire_color=GHOST_COLOR) -> None:
+    """Depth-sorted translucent box for body attitude ``r`` (body -> NED DCM)."""
+    verts = _BOX_V @ np.asarray(r, dtype=float).T
+    if wire_only:
+        for idx, _ in _BOX_FACES:
+            pts = [cam.project(verts[i]) for i in idx]
+            dpg.draw_polygon(pts + [pts[0]], color=wire_color, thickness=1.5, parent=parent)
+        return
+    faces = sorted(_BOX_FACES, key=lambda f: np.mean([cam.depth(verts[i]) for i in f[0]]))
+    for idx, name in faces:
+        pts = [cam.project(verts[i]) for i in idx]
+        fill = _FACE_FILL.get(name, (90, 95, 110, 90))
+        dpg.draw_polygon(pts + [pts[0]], color=(210, 210, 220, 200), fill=fill, thickness=1.5, parent=parent)
