@@ -2,7 +2,7 @@
 
 The IMU / inertial-navigation module is organised into six sections. Every topic below has at least:
 
-- one or more frames in the lecture decks (`make slides` → `EE5110_Sensing_and_Perception/build/06_IMU_pt1..3.pdf`)
+- one or more frames in the lecture decks (IMU Parts 1-3, distributed with the course)
 - one demo scenario (`teaching-sims demo <demo> --scenario <id>`)
 - one tutorial section with experiments and check-your-understanding questions
 
@@ -20,9 +20,8 @@ The IMU / inertial-navigation module is organised into six sections. Every topic
 | 8 | Attitude fusion: CF, KF, Mahony | `complementary` | [11](11-complementary.md) | Part 3 |
 | 9 | Strapdown INS and aiding | `ins` | [13](13-ins.md) | Part 3 |
 
-The decks are `EE5110_Sensing_and_Perception/06_IMU_pt1.tex` (how inertial sensors work),
-`06_IMU_pt2.tex` (errors, noise and calibration) and `06_IMU_pt3.tex` (attitude, fusion and
-inertial navigation). Frames titled **Demo** give the command, what to do, what to observe and
+The decks are IMU Part 1 (how inertial sensors work), Part 2 (errors, noise and calibration)
+and Part 3 (attitude, fusion and inertial navigation). They are not part of this repository. Frames titled **Demo** give the command, what to do, what to observe and
 a question. Frames titled **Background** cover prerequisites.
 
 ## Coverage

@@ -21,7 +21,7 @@ can run in lecture or self-paced lab.
 
 Organised by topic. See the
 [IMU module map](IMU-module-map.md). The
-matching lecture decks (IMU Parts 1-3) are built with `make slides` (see the top-level README).
+matching lecture decks (IMU Parts 1-3) are distributed with the course, not in this repository.
 Foundational study guides for each demo (definitions, worked examples, practice
 problems) are in [guides/imu](../guides/imu/README.md).
 

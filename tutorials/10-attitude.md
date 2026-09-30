@@ -2,7 +2,7 @@
 
 **Demo:** `teaching-sims demo attitude`  
 **Prerequisites:** linear algebra (orthogonal matrices, cross products)  
-**Slides:** IMU Part 3 (`06_IMU_pt3`): “Frames and conventions”, “Representing attitude” and “Attitude from the gyroscope” (`make slides`)
+**Slides:** IMU Part 3 (`06_IMU_pt3`): “Frames and conventions”, “Representing attitude” and “Attitude from the gyroscope”
 
 By the end you should be able to:
 

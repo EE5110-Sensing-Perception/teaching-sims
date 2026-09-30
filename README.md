@@ -51,42 +51,6 @@ topic → demo → scenario map.
 | 15 | Attitude fusion: CF, Kalman, Mahony | [11](tutorials/11-complementary.md) | `teaching-sims demo complementary` |
 | 16 | Strapdown INS and aiding | [13](tutorials/13-ins.md) | `teaching-sims demo ins` |
 
-## Study guides (Canvas)
-
-Each IMU demo has a foundational study guide (definitions, explanations, figures,
-worked examples, practice problems with answers) as Canvas-ready HTML. Build with
-`make guides`; see [guides/imu/README.md](guides/imu/README.md) for importing into Canvas.
-
-## Lecture slides
-
-The IMU lectures are three Beamer decks (SimplePlus theme) in
-`EE5110_Sensing_and_Perception/`, in the same format as the other course decks:
-
-| Deck | Content |
-| --- | --- |
-| `06_IMU_pt1.tex` | How inertial sensors work: MEMS accelerometer, specific force, Coriolis gyroscope, magnetometer |
-| `06_IMU_pt2.tex` | Errors, noise and calibration: thermal noise, error model, Allan variance, grades, calibration |
-| `06_IMU_pt3.tex` | Attitude, fusion and inertial navigation: frames, rotations, filters, strapdown INS, aiding |
-
-Each deck has **Background** frames for prerequisites and **Demo** frames that give
-the command, what to do, what to observe and a question. Shared notation is in
-`06_IMU_macros.tex`. `06_IMU.tex` is the original single deck, kept as an archive.
-
-```bash
-make slides               # figures + XeLaTeX -> EE5110_Sensing_and_Perception/build/06_IMU_pt{1,2,3}.pdf
-make ee5110-imu-figures   # figures only -> EE5110_Sensing_and_Perception/figures/06_IMU/sim/*.pdf
-make slides-legacy        # the earlier demo-only deck -> slides/build/imu.pdf
-```
-
-To build one deck by hand, run `latexmk -xelatex 06_IMU_pt1.tex` from inside
-`EE5110_Sensing_and_Perception/` (the theme, font and figure paths are relative to it).
-
-Prerequisites:
-
-- XeLaTeX with `beamer`, `siunitx`, `pgf`, `booktabs` and `caption`. With TinyTeX:
-  `tlmgr install beamer siunitx pgf caption`.
-- The Inter font under `EE5110_Sensing_and_Perception/fonts/Inter-4.1/`.
-
 List scenarios for any demo:
 
 ```bash
@@ -94,6 +58,12 @@ teaching-sims demo complementary --list-scenarios
 ```
 
 Shell shortcuts live in [`demos/`](demos/README.md).
+
+## Study guides (Canvas)
+
+Each IMU demo has a foundational study guide (definitions, explanations, figures,
+worked examples, practice problems with answers) as Canvas-ready HTML. Build with
+`make guides`; see [guides/imu/README.md](guides/imu/README.md) for importing into Canvas.
 
 ## Tips
 
@@ -103,8 +73,8 @@ Shell shortcuts live in [`demos/`](demos/README.md).
 - IMU conventions: NED navigation / FRD body frame, aerospace **ZYX** yaw–pitch–roll,
   specific force \(\mathbf f=\mathbf a-\mathbf g\) (level reads \(f_z\approx-g\)). The attitude demo
   shows the ROS REP-103 ENU/FLU equivalent.
-- IMU demos share role colours (truth, gyro, accel, mag, fused, Kalman, error), which the slide
-  figures use too.
+- IMU demos share role colours (truth, gyro, accel, mag, fused, Kalman, error), which the figures
+  use too.
 - Optional **3D attitude windows** (accelerometer / gyroscope) need `matplotlib` + `PySide6`
   (already in package dependencies). Checkbox in the left panel opens an external Qt window.
 
@@ -119,8 +89,6 @@ src/teaching_sims/
   ui/palette.py   role colours shared by apps and slides
   slides/         slide-figure generators
   ui/cli.py       teaching-sims entry point
-EE5110_Sensing_and_Perception/  course decks, incl. IMU parts 1-3 (06_IMU_pt*.tex)
-slides/imu/       earlier demo-only IMU deck (make slides-legacy)
 tutorials/        principles + walkthroughs
 tests/            physics unit tests
 demos/            one-liner launch scripts
