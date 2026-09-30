@@ -9,6 +9,7 @@
       \[
         \tilde{\vect{y}} = (\mat{I}+\mat{S})\,\mat{M}\,\vect{y} + \vect{b} + \vect{n}
       \]
+      \vspace{-1em}
       \begin{itemize}
         \item $\vect{b}$ \textbf{bias}: turn-on (changes every power cycle) plus in-run (drifts).
         \item $\mat{S}$ \textbf{scale factor}: $\operatorname{diag}(s_x,s_y,s_z)$, in ppm or \%.
@@ -17,7 +18,7 @@
       \end{itemize}
     \end{column}
     \begin{column}{0.46\textwidth}
-      \small
+      \footnotesize
       \begin{block}{Where they come from}
         \begin{itemize}
           \item Bias: electronics offset, mechanical rest offset, gyro quadrature leakage.
@@ -25,6 +26,7 @@
           \item Misalignment: die placement, package and PCB mounting.
         \end{itemize}
       \end{block}
+      \vspace{0.4em}
       \begin{alertblock}{Key point}
         Scale and misalignment errors grow with the signal. A level accelerometer hides them. Tilt it and they appear.
       \end{alertblock}

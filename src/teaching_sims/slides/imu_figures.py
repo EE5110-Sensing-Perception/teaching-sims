@@ -411,7 +411,7 @@ def fig_mems_gyro_modes() -> plt.Figure:
         ax.loglog(f, g, color=c, label=f"split {split:.0f} Hz: {sensitivity_nm_per_dps(p) * 1e3:.0f} pm/(deg/s), "
                                        f"BW {rate_bandwidth_hz(p, include_lpf=False):.0f} Hz")
     ax.axhline(1 / np.sqrt(2), color=mpl("reference"), lw=0.8, ls="--")
-    ax.set_ylim(1e-2, 3)
+    ax.set_ylim(1e-2, 20)
     ax.set_xlabel("rate input frequency (Hz)")
     ax.set_ylabel("rate output / input")
     ax.legend(loc="lower left", fontsize=8)
