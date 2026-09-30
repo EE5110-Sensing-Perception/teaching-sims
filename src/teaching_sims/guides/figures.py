@@ -36,6 +36,8 @@ from teaching_sims.ui.palette import mpl  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DPI = 150
+# Figures drawn on a small canvas (large text on the slides) need more pixels to fill a guide page.
+DPI_OVERRIDES = {"g_specific_force_cases": 250, "g_iq_phasor": 200}
 G = 9.80665
 
 # Slide figures reused as-is (PNG export).
@@ -186,6 +188,23 @@ def fig_msd_step() -> plt.Figure:
     return fig
 
 
+@figure("g_accel_response")
+def fig_accel_response() -> plt.Figure:
+    """Normalised frequency response |X/A| of the accelerometer for three damping regimes."""
+    r = np.logspace(-2, 1, 600)  # omega / omega_0
+    fig, ax = new_fig(w=4.2, h=3.2)
+    for z, c, ls, name in ((0.05, mpl("error"), "-", r"Underdamped, $b < 2\sqrt{mk}$"),
+                           (1.0, mpl("gyro"), "-", r"Critically damped, $b = 2\sqrt{mk}$"),
+                           (5.0, mpl("accel"), "-.", r"Overdamped, $b > 2\sqrt{mk}$")):
+        ax.loglog(r, 1 / np.sqrt((1 - r**2) ** 2 + (2 * z * r) ** 2), color=c, ls=ls, label=name)
+    ax.set_xlabel(r"input frequency, $\omega / \omega_0$")
+    ax.set_ylabel(r"normalised response, $\omega_0^2\,|X/A|$")
+    ax.set_ylim(1e-2, 2e1)
+    ax.legend(loc="lower left", fontsize=8)
+    ax.set_title("Frequency response of the accelerometer", loc="left")
+    return fig
+
+
 @figure("g_comb_capacitance")
 def fig_comb_capacitance() -> plt.Figure:
     """Parallel-plate comb: single sides are nonlinear, the difference is nearly linear."""
@@ -292,30 +311,63 @@ def fig_demodulation() -> plt.Figure:
     return fig
 
 
+@figure("g_demod_quadrature")
+def fig_demod_quadrature() -> plt.Figure:
+    """Multiply-and-average: Coriolis survives, quadrature cancels unless the reference phase is off."""
+    ph = np.linspace(0, 4 * np.pi, 800)
+    cyc = ph / (2 * np.pi)
+    phi = np.radians(25.0)  # exaggerated for visibility
+    cases = (
+        ("Coriolis\n× reference", np.cos(ph), mpl("fused"), "Coriolis", 0.0, "average = rate"),
+        ("quadrature\n× reference", np.sin(ph), mpl("mag"), "quadrature", 0.0, "average = 0"),
+        ("quadrature\n× shifted reference", np.sin(ph), mpl("mag"), "quadrature", phi, "average ≠ 0"),
+    )
+    fig, axs = new_fig(ncols=3, nrows=2, w=6.0, h=3.5, sharex=True, sharey="row")
+    for k, (title, sig, c, name, err, verdict) in enumerate(cases):
+        ref = np.cos(ph + err)
+        top, bot = axs[0, k], axs[1, k]
+        top.plot(cyc, sig, color=c, label=name)
+        top.plot(cyc, ref, color="0.3", ls="--", lw=1.2, label="reference")
+        top.set_title(title, fontsize=9.5)
+        top.set_ylim(-1.3, 2.1)
+        top.legend(fontsize=7.5, loc="upper center", ncol=2, handlelength=1.2, columnspacing=0.6, handletextpad=0.4)
+        prod = sig * ref
+        bot.fill_between(cyc, prod, 0, where=prod >= 0, color=c, alpha=0.35, lw=0)
+        bot.fill_between(cyc, prod, 0, where=prod < 0, color=mpl("error"), alpha=0.35, lw=0)
+        bot.plot(cyc, prod, color=c, lw=1.2)
+        bot.axhline(prod.mean(), color="0.15", lw=1.6, ls="-")
+        bot.set_ylim(-0.75, 1.55)
+        bot.text(1.0, 1.3, verdict, fontsize=9, ha="center", va="center", color="0.15")
+        bot.set_xlabel("drive cycles")
+    axs[0, 0].set_ylabel("signals")
+    axs[1, 0].set_ylabel("product")
+    return fig
+
+
 @figure("g_iq_phasor")
 def fig_iq_phasor() -> plt.Figure:
     """Phasor view: a reference phase error leaks the large quadrature into the rate channel."""
-    fig, ax = new_fig(w=5.4, h=4.0)
+    fig, ax = new_fig(w=4.0, h=3.4)
     phi = np.radians(15.0)  # exaggerated for visibility
-    ax.plot([-1.0, 1.6], [0, 0], color="0.75", lw=0.8)
+    ax.plot([-0.85, 1.7], [0, 0], color="0.75", lw=0.8)
     ax.plot([0, 0], [-0.5, 1.5], color="0.75", lw=0.8)
-    ax.text(1.62, 0.0, "I (in phase with\ndrive velocity)", fontsize=7.5, color="0.45", va="center")
-    ax.text(0.03, 1.5, "Q (in phase with drive displacement)", fontsize=7.5, color="0.45")
+    ax.text(1.7, 0.07, "drive-velocity phase", fontsize=8.5, color="0.45", ha="right")
+    ax.text(0.05, 1.52, "drive-displacement phase", fontsize=8.5, color="0.45")
     _arrow(ax, (0, 0), (0.7, 0), mpl("fused"), lw=2.4)
-    ax.text(0.35, 0.07, r"Coriolis $\Omega$", color=mpl("fused"), fontsize=9, ha="center")
+    ax.text(0.36, 0.2, "Coriolis\n" r"$\Omega$", color=mpl("fused"), fontsize=10, ha="center", va="center")
     _arrow(ax, (0, 0), (0, 1.3), mpl("mag"), lw=2.4)
-    ax.text(0.05, 0.9, "quadrature $\\Omega_q$\n(often $\\gg\\Omega$)", color=mpl("mag"), fontsize=9)
+    ax.text(0.07, 0.95, "quadrature $\\Omega_q$\n(often $\\gg\\Omega$)", color=mpl("mag"), fontsize=10)
     u = np.array([np.cos(phi), -np.sin(phi)])
-    ax.plot([-0.9 * u[0], 1.5 * u[0]], [-0.9 * u[1], 1.5 * u[1]], color="0.25", lw=1.2, ls="--")
-    ax.text(1.5 * u[0] - 0.1, 1.5 * u[1] - 0.2, "demodulator axis\n(phase error φ)", fontsize=8, color="0.25")
-    ax.add_patch(Arc((0, 0), 1.0, 1.0, theta1=-15, theta2=0, color=mpl("cursor"), lw=1.5))
-    ax.text(0.53, -0.1, "φ", fontsize=10, color="0.3")
+    ax.plot([-0.85 * u[0], 1.6 * u[0]], [-0.85 * u[1], 1.6 * u[1]], color="0.25", lw=1.2, ls="--")
+    ax.text(1.0, -0.62, "reference\n(phase error φ)", fontsize=9.5, color="0.25", ha="center")
+    ax.add_patch(Arc((0, 0), 1.9, 1.9, theta1=-15, theta2=0, color=mpl("cursor"), lw=1.5))
+    ax.text(1.06, -0.13, "φ", fontsize=10.5, color="0.3")
     pq = np.dot([0, 1.3], u) * u
     ax.plot([0, pq[0]], [1.3, pq[1]], color=mpl("mag"), lw=0.8, ls=":")
     ax.plot([0, pq[0]], [0, pq[1]], color=mpl("error"), lw=4, solid_capstyle="butt")
-    ax.text(pq[0] - 0.05, pq[1] + 0.12, "leak into rate output\n" r"$= -\Omega_q\sin\varphi$ (a bias)",
-            color=mpl("error"), fontsize=8.5, ha="right")
-    _schematic(ax, (-1.3, 2.3), (-0.5, 1.65))
+    ax.text(pq[0] - 0.02, pq[1] + 0.14, "picked up:\n" r"$-\Omega_q\sin\varphi$",
+            color=mpl("error"), fontsize=10, ha="right")
+    _schematic(ax, (-1.0, 1.75), (-0.7, 1.65))
     return fig
 
 
@@ -325,26 +377,26 @@ def fig_iq_phasor() -> plt.Figure:
 @figure("g_specific_force_cases")
 def fig_specific_force_cases() -> plt.Figure:
     """Specific force f = a - g in three situations."""
-    fig, axs = new_fig(ncols=3, w=7.2, h=3.0)
+    fig, axs = new_fig(ncols=3, w=4.3, h=2.8)
     cases = (
-        ("at rest on a table", (0, 0), "f = −g: reads 1 g UP"),
-        ("free fall", (0, -1), "a = g, so f = 0"),
-        ("car accelerating\nforward at 0.5 g", (0.5, 0), "f = a − g: up and forward"),
+        ("at rest\non a table", (0, 0), "f = −g:\nreads 1 g up"),
+        ("free fall\n", (0, -1), "a = g,\nso f = 0"),
+        ("accelerating\nforward at 0.5 g", (0.5, 0), "f = a − g:\nup and forward"),
     )
     for ax, (title, a, txt) in zip(axs, cases):
         ax.add_patch(Rectangle((-0.3, -0.2), 0.6, 0.4, color="0.85"))
-        _arrow(ax, (0, 0), (0, -1), mpl("reference"), label="g", label_xy=(0.14, -0.9))
+        _arrow(ax, (0, 0), (0, -1), mpl("reference"), label="g", label_xy=(-0.16, -0.85), fs=11)
         if a != (0, 0):
-            off = 0.12 if a[0] == 0 else 0.0
-            _arrow(ax, (off, 0), (a[0] + off, a[1]), mpl("mag"), label="a", label_xy=(a[0] + off + 0.13, a[1] + 0.25))
+            off = 0.14 if a[0] == 0 else 0.0
+            _arrow(ax, (off, 0), (a[0] + off, a[1]), mpl("mag"), label="a", label_xy=(a[0] + off + 0.16, a[1] + 0.2), fs=11)
         f = (a[0], a[1] + 1)
         if np.hypot(*f) > 1e-6:
-            _arrow(ax, (0, 0), f, mpl("accel"), lw=2.6, label="f", label_xy=(f[0] + 0.12, f[1] + 0.05))
+            _arrow(ax, (0, 0), f, mpl("accel"), lw=2.6, label="f", label_xy=(f[0] + 0.16, f[1] - 0.05), fs=11)
         else:
             ax.plot(0, 0, "o", color=mpl("accel"), ms=7)
         ax.set_title(title, fontsize=9.5)
-        ax.text(0, -1.35, txt, fontsize=8.5, ha="center", color="0.3")
-        _schematic(ax, (-0.9, 0.9), (-1.5, 1.3))
+        ax.text(0, -1.15, txt, fontsize=9.5, ha="center", va="top", color="0.3")
+        _schematic(ax, (-0.9, 0.9), (-1.75, 1.2))
     return fig
 
 
@@ -374,6 +426,42 @@ def fig_tilt_geometry() -> plt.Figure:
     ax.add_patch(Arc((0, 0), 1.0, 1.0, theta1=0, theta2=25, color=mpl("cursor"), lw=1.5))
     ax.text(0.55, 0.1, r"$\theta$", fontsize=10, color="0.3")
     _schematic(ax, (-1.4, 1.9), (-1.0, 1.35))
+    return fig
+
+
+@figure("g_accel_tilt_equivalence")
+def fig_accel_tilt_equivalence() -> plt.Figure:
+    """Side views: a static nose-up pitch and a level forward acceleration give the same f in body axes."""
+    fig, axs = new_fig(ncols=2, w=4.4, h=2.7)
+    th = np.arctan(0.5)  # 0.5 g forward looks like 26.6 deg of pitch
+    body = np.array([[-0.75, -0.12], [0.75, -0.12], [0.75, 0.12], [-0.75, 0.12]])
+    cases = (
+        ("at rest, pitched nose-up", th, (0.0, 0.0), r"$f_x = g\sin\theta$"),
+        ("level, accelerating forward", 0.0, (0.5, 0.0), r"$f_x = a_x$"),
+    )
+    for ax, (title, pitch, a, txt) in zip(axs, cases):
+        rot = np.array([[np.cos(pitch), -np.sin(pitch)], [np.sin(pitch), np.cos(pitch)]])
+        pts = body @ rot.T
+        ax.fill(pts[:, 0], pts[:, 1], color="0.85")
+        xb, up = rot @ np.array([1.0, 0.0]), rot @ np.array([0.0, 1.0])
+        _arrow(ax, (0, 0), tuple(xb * 1.05), slides._AX_RGB[0], label=r"body $x$", label_xy=tuple(xb * 1.05 + (0.1, 0.16)))
+        ax.plot([0, up[0] * 1.3], [0, up[1] * 1.3], color="0.5", lw=1.0, ls="--")
+        ax.text(*(up * 1.43 - (0.12, 0.0)), "body up", fontsize=8.5, color="0.4", ha="center")
+        _arrow(ax, (0, 0), (0, -0.8), mpl("reference"), label="g", label_xy=(-0.14, -0.7), fs=11)
+        if a != (0.0, 0.0):
+            _arrow(ax, (0, -0.3), (a[0], -0.3), mpl("mag"), label="a", label_xy=(a[0] + 0.12, -0.3), fs=11)
+        f = np.array([a[0], a[1] + 1.0])
+        _arrow(ax, (0, 0), tuple(f), mpl("accel"), lw=2.6, label="f", label_xy=tuple(f + (0.14, 0.02)), fs=11)
+        fx = np.dot(f, xb) * xb
+        ax.plot([f[0], fx[0]], [f[1], fx[1]], color="0.6", lw=0.8, ls=":")
+        ax.plot([0, fx[0]], [0, fx[1]], color=mpl("fused"), lw=3.6, solid_capstyle="butt")
+        a_up, a_f = np.degrees(np.arctan2(up[1], up[0])), np.degrees(np.arctan2(f[1], f[0]))
+        ax.add_patch(Arc((0, 0), 1.3, 1.3, theta1=min(a_up, a_f), theta2=max(a_up, a_f), color=mpl("cursor"), lw=1.5))
+        mid = np.radians((a_up + a_f) / 2)
+        ax.text(0.78 * np.cos(mid), 0.78 * np.sin(mid), r"$\theta$", fontsize=10, color="0.3", ha="center", va="center")
+        ax.set_title(title, fontsize=9.5)
+        ax.text(0, -1.0, txt, fontsize=10, ha="center", va="top", color=mpl("fused"))
+        _schematic(ax, (-1.2, 1.5), (-1.3, 1.6))
     return fig
 
 
@@ -685,18 +773,21 @@ def all_names() -> list[str]:
     return [*REUSED, *REGISTRY, *ASSETS]
 
 
-def generate(out_dir: Path, only: list[str] | None = None) -> list[Path]:
+def generate(out_dir: Path, only: list[str] | None = None, fmt: str = "png") -> list[Path]:
+    """Write the figures as ``fmt`` (``png`` for Canvas, ``pdf`` for the lecture decks)."""
     slides._setup_style()
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for name in only or all_names():
-        path = out_dir / f"{name}.png"
+        path = out_dir / f"{name}.{fmt}"
         if name in ASSETS:
+            # Static assets are PNG whatever the figure format.
+            path = out_dir / f"{name}.png"
             shutil.copyfile(ASSETS[name], path)
         else:
             fn = REGISTRY.get(name) or slides.REGISTRY[name]
             fig = fn()
-            fig.savefig(path, dpi=DPI, facecolor="white")
+            fig.savefig(path, dpi=DPI_OVERRIDES.get(name, DPI), facecolor="white")
             plt.close(fig)
         written.append(path)
     return written
@@ -707,11 +798,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=Path("guides/imu/img"))
     ap.add_argument("--only", nargs="*", default=None, help="subset of figure names")
     ap.add_argument("--list", action="store_true", help="list figure names and exit")
+    ap.add_argument("--format", choices=("png", "pdf"), default="png", help="output format")
     args = ap.parse_args(argv)
     if args.list:
         print("\n".join(all_names()))
         return 0
-    for p in generate(args.out, args.only):
+    for p in generate(args.out, args.only, args.format):
         print(p)
     return 0
 

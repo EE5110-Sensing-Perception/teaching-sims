@@ -2,7 +2,7 @@
 
 **Demo:** `teaching-sims demo complementary`  
 **Prerequisites:** [08 — Accelerometers](08-accelerometer.md), [09 — Gyroscopes](09-gyroscope.md), [12 — Magnetometer](12-magnetometer.md); [10 — Frames and rotations](10-attitude.md) for the 3-D part  
-**Slides:** section “Attitude estimation” of the IMU deck
+**Slides:** IMU Part 3 (`06_IMU_pt3`): “Attitude estimation: fusing the sensors”
 
 By the end you should be able to:
 

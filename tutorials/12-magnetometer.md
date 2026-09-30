@@ -2,7 +2,7 @@
 
 **Demo:** `teaching-sims demo magnetometer`  
 **Prerequisites:** [08 — Accelerometers](08-accelerometer.md) (tilt from gravity), [10 — Frames and rotations](10-attitude.md)  
-**Slides:** sections “Inertial sensors” and “Sensor errors and calibration” of the IMU deck
+**Slides:** IMU Part 1 (`06_IMU_pt1`): “The magnetometer”; Part 2: “Calibration”
 
 By the end you should be able to:
 

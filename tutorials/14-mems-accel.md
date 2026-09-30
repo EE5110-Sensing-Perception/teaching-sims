@@ -2,7 +2,7 @@
 
 **Demo:** `teaching-sims demo mems-accel`  
 **Prerequisites:** [10 — Frames and rotations](10-attitude.md) helpful but not required  
-**Slides:** section “Inertial sensors” of the IMU deck  
+**Slides:** IMU Part 1 (`06_IMU_pt1`): “The MEMS accelerometer” and “Accelerometer readout and fabrication”  
 **Goal:** see how a spring–mass proof mass and capacitive comb fingers turn acceleration into a signal; how **bias** and an **impulse** change that signal differently; and why sensitivity, bandwidth and noise trade against each other
 
 ![MEMS comb-drive schematic](assets/mems-comb-drive.png)

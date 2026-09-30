@@ -59,20 +59,33 @@ worked examples, practice problems with answers) as Canvas-ready HTML. Build wit
 
 ## Lecture slides
 
-The IMU deck (Beamer, SimplePlus theme) is generated from the same physics
-as the demos. Build it from the repo root:
+The IMU lectures are three Beamer decks (SimplePlus theme) in
+`EE5110_Sensing_and_Perception/`, in the same format as the other course decks:
+
+| Deck | Content |
+| --- | --- |
+| `06_IMU_pt1.tex` | How inertial sensors work: MEMS accelerometer, specific force, Coriolis gyroscope, magnetometer |
+| `06_IMU_pt2.tex` | Errors, noise and calibration: thermal noise, error model, Allan variance, grades, calibration |
+| `06_IMU_pt3.tex` | Attitude, fusion and inertial navigation: frames, rotations, filters, strapdown INS, aiding |
+
+Each deck has **Background** frames for prerequisites and **Demo** frames that give
+the command, what to do, what to observe and a question. Shared notation is in
+`06_IMU_macros.tex`. `06_IMU.tex` is the original single deck, kept as an archive.
 
 ```bash
-make slides        # figures + XeLaTeX -> slides/build/imu.pdf
-make figures       # figures only -> slides/figures/imu/*.pdf
+make slides               # figures + XeLaTeX -> EE5110_Sensing_and_Perception/build/06_IMU_pt{1,2,3}.pdf
+make ee5110-imu-figures   # figures only -> EE5110_Sensing_and_Perception/figures/06_IMU/sim/*.pdf
+make slides-legacy        # the earlier demo-only deck -> slides/build/imu.pdf
 ```
+
+To build one deck by hand, run `latexmk -xelatex 06_IMU_pt1.tex` from inside
+`EE5110_Sensing_and_Perception/` (the theme, font and figure paths are relative to it).
 
 Prerequisites:
 
-- XeLaTeX with `beamer`, `siunitx`, `pgf` and `booktabs`. With TinyTeX:
-  `tlmgr install beamer siunitx pgf`.
-- The Inter font. `make fonts` downloads Inter 4.1 into `fonts/`
-  (gitignored), which is where the theme expects it.
+- XeLaTeX with `beamer`, `siunitx`, `pgf`, `booktabs` and `caption`. With TinyTeX:
+  `tlmgr install beamer siunitx pgf caption`.
+- The Inter font under `EE5110_Sensing_and_Perception/fonts/Inter-4.1/`.
 
 List scenarios for any demo:
 
@@ -106,7 +119,8 @@ src/teaching_sims/
   ui/palette.py   role colours shared by apps and slides
   slides/         slide-figure generators
   ui/cli.py       teaching-sims entry point
-slides/imu/       Beamer deck sources (SimplePlus theme .sty at repo root)
+EE5110_Sensing_and_Perception/  course decks, incl. IMU parts 1-3 (06_IMU_pt*.tex)
+slides/imu/       earlier demo-only IMU deck (make slides-legacy)
 tutorials/        principles + walkthroughs
 tests/            physics unit tests
 demos/            one-liner launch scripts

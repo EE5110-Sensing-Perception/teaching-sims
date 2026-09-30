@@ -10,8 +10,8 @@ build/
 *.mp4
 .DS_Store
 fonts/
-slides/build/
-slides/figures/imu/
+slides/
+EE5110_Sensing_and_Perception/
 guides/imu/img/
 guides/imu/canvas/
 guides/imu/preview/

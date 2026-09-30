@@ -2,7 +2,7 @@
 
 **Demo:** `teaching-sims demo mems-gyro`  
 **Prerequisites:** [14 — MEMS comb-drive](14-mems-accel.md) (spring–mass–damper, resonance)  
-**Slides:** section “Inertial sensors” of the IMU deck
+**Slides:** IMU Part 1 (`06_IMU_pt1`): “Rotating reference frames” and “The MEMS gyroscope”
 
 By the end you should be able to:
 

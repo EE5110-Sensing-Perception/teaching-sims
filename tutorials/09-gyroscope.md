@@ -2,7 +2,7 @@
 
 **Demo:** `teaching-sims demo gyroscope`  
 **Prerequisites:** [10 — Frames and rotations](10-attitude.md), [08 — Accelerometers](08-accelerometer.md); optional [16 — MEMS gyroscope](16-mems-gyro.md) for where bias comes from  
-**Slides:** sections “Sensor errors and calibration” and “In practice” of the IMU deck
+**Slides:** IMU Part 2 (`06_IMU_pt2`): “How errors grow when integrated”, “Allan variance” and “From datasheet to model”
 
 By the end you should be able to:
 

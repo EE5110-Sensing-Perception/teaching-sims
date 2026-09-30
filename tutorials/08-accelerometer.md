@@ -2,7 +2,7 @@
 
 **Demo:** `teaching-sims demo accelerometer`  
 **Prerequisites:** [10 — Frames and rotations](10-attitude.md); optional [14 — MEMS comb-drive](14-mems-accel.md) for sensor internals  
-**Slides:** sections “Inertial sensors”, “Sensor errors and calibration” and “In practice” of the IMU deck
+**Slides:** IMU Part 1 (`06_IMU_pt1`): “What an accelerometer really measures”; Part 2: “Deterministic errors”, “Calibration” and “The IMU on a robot”
 
 By the end you should be able to:
 

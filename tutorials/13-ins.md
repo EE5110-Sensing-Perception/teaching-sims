@@ -2,7 +2,7 @@
 
 **Demo:** `teaching-sims demo ins`  
 **Prerequisites:** Tutorials 08–12 (especially [09 — Gyroscopes](09-gyroscope.md) and [11 — Attitude fusion](11-complementary.md))  
-**Slides:** section “Inertial navigation” of the IMU deck
+**Slides:** IMU Part 3 (`06_IMU_pt3`): “Strapdown inertial navigation”, “How inertial navigation errors grow” and “Aiding”
 
 By the end you should be able to:
 

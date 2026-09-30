@@ -19,6 +19,11 @@ def test_guide_figure_renders(tmp_path, name):
     assert path.exists() and path.stat().st_size > 1000
 
 
+def test_guide_figure_pdf_for_lecture_decks(tmp_path):
+    (path,) = figures.generate(tmp_path, ["g_random_walk"], fmt="pdf")
+    assert path.suffix == ".pdf" and path.read_bytes().startswith(b"%PDF")
+
+
 def test_to_canvas_inlines_classes_and_rewrites_images():
     out = build.to_canvas('<div class="key"><figure><img src="img/a.png" alt="x"></figure></div>', "/files/")
     assert "class=" not in out
