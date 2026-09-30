@@ -70,18 +70,18 @@
 \end{frame}
 
 \begin{frame}{Representing attitude}
-  \footnotesize
+  \footnotesize\setlength{\tabcolsep}{4pt}
   \begin{tabular}{@{}llll@{}}
     \toprule
     Representation & Params & Good for & Watch out \\
     \midrule
-    DCM $\mat{R}\in SO(3)$ & 9 (6 constr.) & composing, rotating vectors & drifts off $SO(3)$ \\
+    Direction cosine matrix (DCM) & 9 (6 constr.) & composing, rotating vectors & drifts off $SO(3)$ \\
     Euler ZYX $(\psi,\theta,\phi)$ & 3 & humans, logs, UIs & singular at $\theta=\pm90^\circ$ \\
     Unit quaternion $\vect{q}$ & 4 (1 constr.) & propagation, no singularity & $\vect{q}\equiv-\vect{q}$ \\
     Rotation vector $\alpha\hat{\vect{n}}$ & 3 & small errors, filter updates & wraps at $\pi$ \\
     \bottomrule
   \end{tabular}
-  \vspace{0.8em}
+  \vspace{1.8em}
 
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
@@ -100,6 +100,40 @@
     \end{column}
   \end{columns}
   \examplebar{attitude}{level\_heading, pitch\_nose\_up, quat\_double\_cover}
+\end{frame}
+
+\begin{frame}{The direction cosine matrix (DCM)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \small
+      A $3\times3$ matrix $\mat{R}^n_b$ that converts coordinates from the body frame to the navigation frame:
+      \[
+        \vect{v}^n = \mat{R}^n_b\,\vect{v}^b
+      \]
+      Each column is a body axis written in nav coordinates, and each entry is the cosine of the angle between a nav axis and a body axis (a dot product of unit vectors):
+      \[
+        \mat{R}^n_b =
+        \begin{bmatrix}
+          x_n{\cdot}x_b & x_n{\cdot}y_b & x_n{\cdot}z_b\\
+          y_n{\cdot}x_b & y_n{\cdot}y_b & y_n{\cdot}z_b\\
+          z_n{\cdot}x_b & z_n{\cdot}y_b & z_n{\cdot}z_b
+        \end{bmatrix}
+      \]
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \footnotesize
+      \textbf{Properties}
+      \begin{itemize}
+        \item Orthonormal: $\mat{R}^\top\mat{R}=\mat{I}$, so the inverse is the transpose, $\mat{R}^b_n=(\mat{R}^n_b)^\top$.
+        \item $\det\mat{R}=+1$: a rotation, not a reflection. These matrices form the group $SO(3)$.
+        \item Chaining frames is matrix multiplication: $\mat{R}^n_c=\mat{R}^n_b\,\mat{R}^b_c$.
+      \end{itemize}
+      \textbf{Example: yaw by $\psi$ about $z$}
+      \[
+        \mat{R}_z(\psi)=\begin{bmatrix}\cos\psi&-\sin\psi&0\\ \sin\psi&\cos\psi&0\\ 0&0&1\end{bmatrix}
+      \]
+    \end{column}
+  \end{columns}
 \end{frame}
 
 \begin{frame}{Composition order: rotations do not commute}
