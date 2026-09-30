@@ -1,0 +1,237 @@
+<!-- title: Guide 5 — Gyroscopes: Integration, Noise Models and Allan Variance -->
+<div class="overview">
+<p><strong>Demo:</strong> <code>teaching-sims demo gyroscope</code><br>
+<strong>Prerequisites:</strong> Guide 1; Guide 4 (error model); mean, variance and standard deviation of a random variable<br>
+<strong>Time:</strong> about 2 hours of reading, plus the demo walkthrough (Tutorial 09)</p>
+<p>By the end of this guide you should be able to:</p>
+<ul>
+<li>integrate gyro rate into angle, and predict how each error term grows with time;</li>
+<li>explain white noise, random walk, bias instability and rate random walk, with their units;</li>
+<li>convert between datasheet units and simulation parameters without unit mistakes;</li>
+<li>compute an Allan deviation, and read ARW, bias instability and rate random walk from its slopes;</li>
+<li>choose an IMU grade for a task from the time it must run between aiding updates.</li>
+</ul>
+</div>
+
+<h2>1. Why this matters</h2>
+<p>A gyro measures angular rate. To get an angle, the rate must be integrated, and integration accumulates every error: a tiny constant offset becomes a steadily growing heading error, and random noise becomes a random walk. The question "how long can my robot hold its heading without an external reference?" is answered entirely by the gyro's error model. This guide gives you the language datasheets use for that model, and the tool used to measure it: the Allan variance.</p>
+
+<h2>2. Key terms</h2>
+<table>
+<tr><th style="width:26%">Term</th><th>Definition</th></tr>
+<tr><td>Random variable, mean, variance</td><td>A quantity with a random value; its average \(\mu\); and the average squared spread \(\sigma^2=E[(x-\mu)^2]\). The standard deviation is \(\sigma\).</td></tr>
+<tr><td>White noise</td><td>A random signal whose samples are independent and zero-mean, with equal power at all frequencies (a flat power spectral density).</td></tr>
+<tr><td>Power spectral density (PSD)</td><td>How a signal's power is distributed over frequency. Its square root, with units like (°/s)/√Hz, is the <em>noise density</em>.</td></tr>
+<tr><td>Random walk</td><td>The running sum (integral) of white noise. It wanders with no tendency to return, and its spread grows as \(\sqrt t\).</td></tr>
+<tr><td>Turn-on bias \(b_0\)</td><td>The constant offset present after power-up. It differs from one power cycle to the next ("bias repeatability").</td></tr>
+<tr><td>Angle random walk (ARW), \(N\)</td><td>The white noise on the rate, expressed as the angle random walk it causes. Units °/√h or °/√s.</td></tr>
+<tr><td>Bias instability (BI), \(B\)</td><td>The slow, correlated wander of the bias during a run (flicker or 1/f noise). Units °/h. The best stability a bias estimate can reach by averaging.</td></tr>
+<tr><td>Rate random walk (RRW), \(K\)</td><td>A random walk of the bias itself. Units °/h/√h.</td></tr>
+<tr><td>Gauss–Markov process</td><td>A random process that wanders but relaxes back toward zero with a correlation time \(T_c\). Used to model bias drift.</td></tr>
+<tr><td>Scale-factor error \(s\)</td><td>Fractional gain error, in ppm or %.</td></tr>
+<tr><td>Allan variance \(\sigma_A^2(\tau)\)</td><td>Half the mean squared difference between successive averages of length \(\tau\). Its log–log slopes identify the noise terms.</td></tr>
+<tr><td>Aiding</td><td>Any external measurement that corrects drift: magnetometer, GNSS, vision, odometry.</td></tr>
+</table>
+
+<h2>3. Background: random noise and random walks</h2>
+<h3>3.1 Adding up random numbers</h3>
+<p>Take \(n\) independent random numbers, each with zero mean and variance \(\sigma^2\). Their sum also has zero mean, and because variances of independent quantities add, its variance is \(n\sigma^2\). So its standard deviation is \(\sigma\sqrt n\). The sum does not grow on average, but its <em>spread</em> grows as the square root of the number of terms.</p>
+<p>Integrating a noisy gyro is exactly this. Sampling at \(f_s\) for time \(t\) sums \(n=f_st\) samples, each multiplied by \(\Delta t=1/f_s\). If the per-sample rate noise is \(\sigma_\omega\), the angle error after time \(t\) has standard deviation</p>
+$$\sigma_\theta(t)=\sigma_\omega\,\Delta t\,\sqrt{f_st}=\frac{\sigma_\omega}{\sqrt{f_s}}\sqrt t = N\sqrt t,\qquad N\equiv\frac{\sigma_\omega}{\sqrt{f_s}} .$$
+<p>\(N\) is the <strong>angle random walk</strong> coefficient. It is a property of the sensor, independent of the sample rate: sampling faster gives noisier individual samples, but more of them to average.</p>
+<figure><img src="img/g_random_walk.png" alt="Forty sample paths of integrated white noise spreading out, with plus and minus N root t and 2 N root t envelopes."><figcaption><strong>Figure 1.</strong> Forty runs of an integrated, bias-free gyro. Each run wanders; the ensemble spreads as \(N\sqrt t\). A single run can look like a drift, but its direction is random.</figcaption></figure>
+
+<h3>3.2 Noise density and sample rate</h3>
+<p>The same sensor sampled faster shows a larger per-sample standard deviation, \(\sigma_\omega=N\sqrt{f_s}\), because a higher sample rate admits a wider band of white noise. What stays the same is the noise density \(N\), and anything averaged over a fixed time.</p>
+<figure><img src="img/g_noise_vs_rate.png" alt="The same noise density sampled at 100 Hz and 1000 Hz: the raw samples differ in spread by a factor of about 3, but 1 second averages have the same spread."><figcaption><strong>Figure 2.</strong> One noise density, two sample rates. Raw samples at 1 kHz are \(\sqrt{10}\) times noisier than at 100 Hz, yet their 1 s averages agree.</figcaption></figure>
+<div class="def"><strong>Datasheet unit conversions (the most common source of simulation bugs).</strong>
+<ul>
+<li>ARW: \(N\,[^\circ/\sqrt{\text h}]\div60=N\,[^\circ/\sqrt{\text s}]\), which equals the noise density in (°/s)/√Hz.</li>
+<li>Per-sample noise at rate \(f_s\): \(\sigma_\omega\,[^\circ/\text s]=N\,[^\circ/\sqrt{\text s}]\times\sqrt{f_s}\).</li>
+<li>Bias: \(b\,[^\circ/\text h]\div3600=b\,[^\circ/\text s]\).</li>
+<li>RRW: \(K\,[^\circ/\text h/\sqrt{\text h}]\div(3600\times60)=K\,[^\circ/\text s/\sqrt{\text s}]\).</li>
+</ul></div>
+
+<h2>4. The gyro error model and how each term grows</h2>
+<p>The measured rate about one axis is</p>
+$$\tilde\omega = (1+s)\,\omega + b_0 + b_{\mathrm{BI}}(t) + b_{\mathrm{RW}}(t) + n(t),$$
+<p>and the heading estimate is its integral, \(\hat\psi(t)=\int_0^t\tilde\omega\,d\tau\). Integrating each term separately gives its growth law:</p>
+<table>
+<tr><th>Term</th><th>Datasheet unit</th><th>Heading error</th><th>Removed by start-up calibration?</th></tr>
+<tr><td>Turn-on bias \(b_0\)</td><td>°/h or °/s</td><td>\(b_0\,t\) (a ramp)</td><td>Yes: average at rest and subtract</td></tr>
+<tr><td>Scale factor \(s\)</td><td>ppm</td><td>\(s\times\)(angle turned)</td><td>Needs a rate table</td></tr>
+<tr><td>ARW \(N\)</td><td>°/√h</td><td>\(N\sqrt t\) (random)</td><td>No; averages out only in the sense of §3</td></tr>
+<tr><td>Bias instability \(B\)</td><td>°/h</td><td>roughly \(B\,t\) while correlated</td><td>No: it changes after calibration</td></tr>
+<tr><td>Rate random walk \(K\)</td><td>°/h/√h</td><td>\(K\,t^{3/2}/\sqrt3\)</td><td>No</td></tr>
+</table>
+<figure><img src="img/gyro_error_growth.png" alt="Log-log plot of heading error against time for bias, ARW, bias instability and RRW terms, each a straight line with a different slope."><figcaption><strong>Figure 3.</strong> Growth of each term on log–log axes: slope ½ for ARW, 1 for bias, 3/2 for RRW. Which term dominates depends on the time horizon.</figcaption></figure>
+<p><strong>Bias instability</strong> deserves a note. The bias of a real gyro wanders slowly, with a spectrum that rises toward low frequencies (flicker, or 1/f, noise). It is typically modelled as a sum of Gauss–Markov processes. You can measure the bias at start-up, but within minutes it has moved. This is why estimators such as the Kalman filter of Guide 7 carry the gyro bias as a <em>state</em> and re-estimate it continuously.</p>
+<div class="key"><strong>Key idea.</strong> Calibration removes what is constant. Everything that changes during a run (bias instability, rate random walk, temperature effects) must be estimated online from aiding measurements, or tolerated.</div>
+
+<h2>5. Allan variance: measuring the noise</h2>
+<h3>5.1 Why not just the standard deviation?</h3>
+<p>The standard deviation of a static recording mixes all noise types together and depends on the sample rate and the recording length. We need a statistic that separates short-term noise from long-term drift. The Allan variance does this by asking: <em>how much does the average over a window of length \(\tau\) change from one window to the next?</em></p>
+
+<h3>5.2 The recipe</h3>
+<ol>
+<li>Record the gyro at rest for a long time \(T\): hours for good sensors.</li>
+<li>Choose a cluster length \(\tau\). Split the record into consecutive clusters of length \(\tau\) and average each one: \(\bar\omega_1,\bar\omega_2,\dots\)</li>
+<li>Compute \(\sigma_A^2(\tau)=\tfrac12\big\langle(\bar\omega_{k+1}-\bar\omega_k)^2\big\rangle\), the mean over all adjacent pairs.</li>
+<li>Repeat for many \(\tau\), from one sample up to about \(T/10\), and plot the Allan <em>deviation</em> \(\sigma_A(\tau)\) on log–log axes.</li>
+</ol>
+<figure><img src="img/g_allan_clusters.png" alt="A static gyro record with 2 second cluster averages drawn as horizontal bars and arrows marking the differences between adjacent averages."><figcaption><strong>Figure 4.</strong> Computing one point of the Allan curve (\(\tau=2\) s). The arrows are the differences between adjacent cluster averages.</figcaption></figure>
+<p>The factor ½ makes \(\sigma_A^2\) equal the ordinary variance for white noise at \(\tau\) = one sample. A constant bias cancels in every difference, so <strong>the Allan variance is blind to constant bias</strong>; it measures only how the bias <em>changes</em>.</p>
+
+<h3>5.3 Reading the curve</h3>
+<p>Each noise type has a characteristic slope:</p>
+<table>
+<tr><th>Slope</th><th>Noise type</th><th>How to read the coefficient</th></tr>
+<tr><td>−½</td><td>White rate noise (ARW)</td><td>\(N=\sigma_A(\tau=1\text{ s})\) on the −½ line</td></tr>
+<tr><td>0</td><td>Bias instability</td><td>Flat floor \(=0.664\,B\), so \(B=\text{floor}/0.664\)</td></tr>
+<tr><td>+½</td><td>Rate random walk</td><td>\(K=\sigma_A(\tau=3\text{ s})\) on the +½ line</td></tr>
+</table>
+<figure><img src="img/allan_signatures.png" alt="Allan deviation curve with a slope of minus one half at short averaging times, a flat floor, and a slope of plus one half at long times, with reference lines for N, B and K."><figcaption><strong>Figure 5.</strong> Allan deviation of a simulated industrial MEMS gyro. Averaging longer helps (slope −½) until bias instability sets a floor; beyond that, rate random walk makes longer averages worse.</figcaption></figure>
+<p>Intuition for the shape: averaging longer suppresses white noise, so the curve falls. But the bias is slowly wandering, so beyond some \(\tau\) the average of one window no longer predicts the next, and the curve flattens and then rises. The bottom of the curve is the best bias stability you can achieve by averaging.</p>
+<div class="warn"><strong>Practical cautions.</strong> Trust only \(\tau\lesssim T/10\): long clusters give few differences and a noisy estimate. Expect about ±20 % scatter on \(B\) from a single record of a few hours. Better sensors need <em>longer</em> recordings, because their floor appears at larger \(\tau\). Temperature changes during the recording masquerade as rate random walk.</div>
+<figure><img src="img/grade_allan.png" alt="Allan deviation curves for consumer, industrial and tactical IMU grades; better grades are lower across all averaging times."><figcaption><strong>Figure 6.</strong> Allan curves for the three grades used in the demos. The whole curve shifts down with grade.</figcaption></figure>
+
+<h2>6. Choosing an IMU grade</h2>
+<p>Representative values used throughout this module (per datasheet class):</p>
+<table>
+<tr><th>Gyro</th><th>Consumer</th><th>Industrial</th><th>Tactical</th></tr>
+<tr><td>Turn-on bias</td><td>3600 °/h (1 °/s)</td><td>180 °/h</td><td>1 °/h</td></tr>
+<tr><td>ARW</td><td>0.3 °/√h</td><td>0.15 °/√h</td><td>0.05 °/√h</td></tr>
+<tr><td>Bias instability</td><td>20 °/h</td><td>3 °/h</td><td>0.5 °/h</td></tr>
+<tr><td>Typical use</td><td>phones, hobby drones</td><td>robotics, UAV modules</td><td>FOG / high-end MEMS</td></tr>
+</table>
+<p>Choose by asking two questions:</p>
+<ol>
+<li><strong>How long must the system coast between aiding updates?</strong> Milliseconds for visual–inertial odometry at 20 Hz; seconds for a camera dropout; minutes for a GNSS outage in a tunnel.</li>
+<li><strong>Which term dominates over that horizon, and is it acceptable?</strong> Read it from the growth laws or the Allan curve.</li>
+</ol>
+<figure><img src="img/grade_heading_drift.png" alt="Heading drift over one minute for consumer, industrial and tactical gyros, with and without turn-on bias compensation."><figcaption><strong>Figure 7.</strong> Heading drift over 60 s for each grade. Removing the turn-on bias matters far more than any other single step for consumer parts.</figcaption></figure>
+
+<h2>7. Worked examples</h2>
+
+<div class="example">
+<h4>Example 5.1 — From datasheet to simulation</h4>
+<p><strong>Problem.</strong> A datasheet gives ARW = 0.15 °/√h and bias instability 3 °/h. You simulate at 400 Hz. What per-sample noise standard deviation do you use, and what is the bias instability in °/s?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(N=0.15/60=0.0025\) °/√s.</li>
+<li>\(\sigma_\omega=N\sqrt{f_s}=0.0025\times\sqrt{400}=0.0025\times20=0.05\) °/s.</li>
+<li>\(B=3/3600=8.3\times10^{-4}\) °/s.</li>
+</ol>
+<p><strong>Check.</strong> A common error is to use 0.15 °/s directly as the per-sample noise. That overstates the noise by a factor of 3 at 400 Hz, and the error changes with sample rate.</p>
+</div>
+
+<div class="example">
+<h4>Example 5.2 — One minute of heading hold</h4>
+<p><strong>Problem.</strong> Estimate the heading error after 60 s for (a) a consumer gyro with its turn-on bias uncompensated; (b) an industrial gyro, uncompensated; (c) the industrial gyro after start-up bias calibration.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>(a) \(b_0=1\) °/s: error \(=1\times60=60^\circ\).</li>
+<li>(b) \(b_0=180\) °/h \(=0.05\) °/s: error \(=0.05\times60=3.0^\circ\).</li>
+<li>(c) Remaining terms: bias instability \(\approx B\,t=(3/3600)\times60=0.05^\circ\); ARW \(=N\sqrt t=0.0025\sqrt{60}=0.019^\circ\) (1σ).</li>
+</ol>
+<p><strong>Interpretation.</strong> Calibrating the turn-on bias reduces the error 60-fold for the industrial part. After that, bias instability and ARW are comparable over a minute.</p>
+</div>
+
+<div class="example">
+<h4>Example 5.3 — Checking the √t law</h4>
+<p><strong>Problem.</strong> A bias-free gyro has \(N=0.4\) °/√s. What is the 1σ angle spread at 4 s and at 16 s?</p>
+<p><strong>Solution.</strong> \(\sigma_\theta=N\sqrt t\): at 4 s, \(0.4\times2=0.8^\circ\); at 16 s, \(0.4\times4=1.6^\circ\).</p>
+<p><strong>Interpretation.</strong> Four times longer gives only twice the spread. That ratio (not a doubling of time giving double the error) is the signature of a random walk.</p>
+</div>
+
+<div class="example">
+<h4>Example 5.4 — Reading an Allan plot</h4>
+<p><strong>Problem.</strong> An Allan deviation plot shows the −½ line passing through \(2.5\times10^{-3}\) °/s at \(\tau=1\) s, and a flat floor at 2.0 °/h. Find \(N\) and \(B\) in datasheet units.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(N=\sigma_A(1\text{ s})=2.5\times10^{-3}\) °/√s; ×60 gives \(N=0.15\) °/√h.</li>
+<li>\(B=\text{floor}/0.664=2.0/0.664=3.0\) °/h.</li>
+</ol>
+<p><strong>Answer.</strong> These are the industrial-grade values; the demo's "Allan deviation (industrial MEMS)" scenario reproduces them.</p>
+</div>
+
+<div class="example">
+<h4>Example 5.5 — Scale-factor error</h4>
+<p><strong>Problem.</strong> A gyro with a 1 % scale-factor error measures a 90° turn, then stays still for a minute. What is the heading error at the end?</p>
+<p><strong>Solution.</strong> The scale error applies only while turning: \(0.01\times90^\circ=0.9^\circ\). While stationary, \(\omega=0\) and the scale error contributes nothing more.</p>
+<p><strong>Interpretation.</strong> Scale-factor error depends on how much the robot turns, not on how long it runs. A robot that spins continuously (a lidar turret, a spinning drone) accumulates it quickly.</p>
+</div>
+
+<div class="example">
+<h4>Example 5.6 — Choosing a grade for a camera dropout</h4>
+<p><strong>Problem.</strong> A robot's visual odometry can drop out for up to 10 s. It has a consumer gyro. Heading must stay within 1°. Is the gyro adequate?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>If the bias is uncompensated: \(1\ ^\circ/\text s\times10\ \text s=10^\circ\). Not adequate.</li>
+<li>If the filter has been estimating the bias while vision was available, the residual is about the bias instability: \((20/3600)\times10=0.056^\circ\).</li>
+<li>ARW: \((0.3/60)\sqrt{10}=0.016^\circ\).</li>
+</ol>
+<p><strong>Answer.</strong> Adequate, <em>provided</em> the gyro bias is estimated online. The requirement drives the filter design (a bias state) rather than a more expensive sensor.</p>
+</div>
+
+<h2>8. Common mistakes</h2>
+<ul>
+<li>Unit errors between °/√h, °/√s and °/s, especially using the ARW figure as a per-sample standard deviation.</li>
+<li>Treating one noisy run as a "drift" with a definite direction. ARW is zero-mean.</li>
+<li>Expecting start-up calibration to remove bias instability.</li>
+<li>Computing Allan variance from a record that is too short, or during warm-up.</li>
+<li>Comparing sensors on "noise" without saying over what averaging time.</li>
+</ul>
+
+<h2>9. Using the demo</h2>
+<div class="demo">
+<p>Run <code>teaching-sims demo gyroscope</code>:</p>
+<table>
+<tr><th>Scenario</th><th>Concept</th><th>What to look for</th></tr>
+<tr><td>Clean step turn / Bias → angle ramp / Bias compensated</td><td>§4</td><td>The dial keeps turning after the turn stops; compensation removes the ramp.</td></tr>
+<tr><td>Angle random walk (ensemble)</td><td>§3.1</td><td>The ensemble spreads as \(N\sqrt t\); press Resample noise.</td></tr>
+<tr><td>Bias instability: calibration decays</td><td>§4</td><td>Runs drift apart within a minute despite compensation.</td></tr>
+<tr><td>Scale-factor error</td><td>Ex. 5.5</td><td>0.9° after the turn, then constant.</td></tr>
+<tr><td>Allan deviation (industrial MEMS)</td><td>§5</td><td>Read N and B and compare with the model column; try 10 vs 240 min records for tactical grade.</td></tr>
+<tr><td>Consumer IMU, 60 s heading hold</td><td>§6, Ex. 5.2</td><td>~60° uncompensated; switch grades.</td></tr>
+</table>
+<p>See Tutorial 09 for the walkthrough and lab sheet.</p>
+</div>
+
+<h2>10. Practice problems</h2>
+<ol>
+<li>A gyro has ARW 0.2 °/√h. What per-sample noise standard deviation should you simulate at 400 Hz? At 1 kHz?</li>
+<li>What is the 1σ heading error from ARW alone after 1 hour for the tactical grade (0.05 °/√h)?</li>
+<li>Why does the Allan curve not show a constant bias? What does that imply about using Allan variance to choose a calibration strategy?</li>
+<li>A 30-minute static record shows an Allan curve still falling at \(\tau=200\) s. What can you conclude about \(B\)?</li>
+<li>A robot must hold heading to 2° for 5 minutes with no aiding. Which grade is the cheapest that works, assuming turn-on bias is calibrated at start-up and bias instability acts as a constant \(B\) over the interval?</li>
+<li>The per-sample standard deviation of a static recording at 100 Hz is 0.03 °/s. Estimate the ARW in °/√h.</li>
+</ol>
+
+<h2>11. Summary of key equations</h2>
+<table>
+<tr><th>Quantity</th><th>Equation</th></tr>
+<tr><td>Measurement model</td><td>\(\tilde\omega=(1+s)\omega+b_0+b_{\mathrm{BI}}+b_{\mathrm{RW}}+n\)</td></tr>
+<tr><td>Random walk growth</td><td>\(\sigma_\theta=N\sqrt t,\quad N=\sigma_\omega/\sqrt{f_s}\)</td></tr>
+<tr><td>Growth laws</td><td>bias \(b\,t\); BI \(\sim B\,t\); RRW \(K\,t^{3/2}/\sqrt3\); scale \(s\,\Delta\psi\)</td></tr>
+<tr><td>Allan variance</td><td>\(\sigma_A^2(\tau)=\frac12\langle(\bar\omega_{k+1}-\bar\omega_k)^2\rangle\)</td></tr>
+<tr><td>Reading the Allan curve</td><td>\(N=\sigma_A(1\,\text s)\); floor \(=0.664B\); \(K=\sigma_A(3\,\text s)\) on +½ line</td></tr>
+<tr><td>Unit conversions</td><td>°/√h ÷ 60 → °/√s; °/h ÷ 3600 → °/s</td></tr>
+</table>
+
+<h2>12. Answers to practice problems</h2>
+<ol>
+<li class="answer">\(N=0.2/60=0.00333\) °/√s. At 400 Hz: \(0.00333\times20=0.067\) °/s. At 1 kHz: \(0.00333\times31.6=0.105\) °/s.</li>
+<li class="answer">\(N\sqrt t\) with \(t=1\) h: 0.05° (1σ). Working in hours avoids the conversion.</li>
+<li class="answer">Each Allan term is a difference of adjacent averages, so a constant cancels. Allan variance tells you how fast the bias changes, i.e. how often you must re-estimate it; the constant part must be found by a separate rest average.</li>
+<li class="answer">The floor has not been reached, so \(B\) is below \(\sigma_A(200\,\text s)/0.664\). You can only give an upper bound; record for longer (the floor appears at larger τ for better sensors).</li>
+<li class="answer">300 s. Consumer: BI \(20/3600\times300=1.67^\circ\), ARW \(0.3\sqrt{300/3600}=0.087^\circ\): total ≈ 1.8° — marginal. Industrial: \(3/3600\times300=0.25^\circ\) plus 0.043°. Industrial is the safe cheapest choice; consumer only just meets the requirement with no margin.</li>
+<li class="answer">\(N=\sigma_\omega/\sqrt{f_s}=0.03/10=0.003\) °/√s; ×60 gives 0.18 °/√h. (This assumes the per-sample spread is white noise; bias drift inflates it for long records.)</li>
+</ol>
+
+<h2>13. Further reading</h2>
+<ul>
+<li>IEEE Std 952-1997, <em>IEEE Standard Specification Format Guide and Test Procedure for Single-Axis Interferometric Fiber Optic Gyros</em>, Annex C (Allan variance).</li>
+<li>N. El-Sheimy, H. Hou and X. Niu, "Analysis and modeling of inertial sensors using Allan variance", <em>IEEE Trans. Instrum. Meas.</em>, 57(1), 2008.</li>
+<li>O. Woodman, "An introduction to inertial navigation", University of Cambridge Technical Report UCAM-CL-TR-696, 2007. A very readable overview.</li>
+</ul>

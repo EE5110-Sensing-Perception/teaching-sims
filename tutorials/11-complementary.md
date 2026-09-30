@@ -2,8 +2,7 @@
 
 **Demo:** `teaching-sims demo complementary`  
 **Prerequisites:** [08 — Accelerometers](08-accelerometer.md), [09 — Gyroscopes](09-gyroscope.md), [12 — Magnetometer](12-magnetometer.md); [10 — Frames and rotations](10-attitude.md) for the 3-D part  
-**Learning outcomes:** LP14–LP17 (see [IMU learning outcomes](IMU-learning-outcomes.md))  
-**Slides:** section D of the IMU deck
+**Slides:** section “Attitude estimation” of the IMU deck
 
 By the end you should be able to:
 
@@ -17,7 +16,7 @@ By the end you should be able to:
 
 ## 1. Principles
 
-### 1.1 Complementary filter (LP14)
+### 1.1 Complementary filter
 
 | | Gyro \(\int\omega\) | Accelerometer tilt |
 | --- | --- | --- |
@@ -35,7 +34,7 @@ By the end you should be able to:
 - Choose \(\tau\) from the physics: long enough to average accelerometer noise and short manoeuvres, short enough that gyro drift over \(\tau\) stays small.
 - Then compute \(\alpha=\tau/(\tau+\Delta t)\). Moving a filter to a different loop rate without recomputing \(\alpha\) changes \(\tau\).
 
-### 1.2 Kalman filter (LP16)
+### 1.2 Kalman filter
 
 The state is \(\mathbf x=[\theta,\,b]\), with the gyro as the input:
 
@@ -50,7 +49,7 @@ The state is \(\mathbf x=[\theta,\,b]\), with the gyro as the input:
 
 **Caveat:** the Kalman filter assumes white measurement noise. A sustained surge violates that, and the filter will even learn a wrong bias.
 
-### 1.3 Mahony filter (LP15)
+### 1.3 Mahony filter
 
 \[
 \dot{\mathbf q}=\tfrac12\mathbf q\otimes[0,\ \tilde{\boldsymbol\omega}-\hat{\mathbf b}+K_p\mathbf e],\qquad
@@ -62,13 +61,13 @@ The state is \(\mathbf x=[\theta,\,b]\), with the gyro as the input:
 - \(K_p\approx1/\tau\).
 - \(K_i\) integrates the persistent error into a gyro-bias estimate.
 
-### 1.4 Observability (LP16)
+### 1.4 Observability
 
 - Gravity does not change under rotation about the vertical.
 - From gravity alone, roll, pitch and the horizontal gyro biases are observable, but **yaw and the vertical gyro bias are not**.
 - A heading reference (magnetometer, GNSS course, vision) is required.
 
-### 1.5 When gravity lies (LP17)
+### 1.5 When gravity lies
 
 - All accelerometer corrections assume \(\mathbf f\approx-\mathbf g\).
 - **Gating** skips updates when \(\big|\|\mathbf f\|-g\big|>\epsilon\). It is cheap but imperfect: tilt can cancel the change in norm.
@@ -93,25 +92,25 @@ The state is \(\mathbf x=[\theta,\,b]\), with the gyro as the input:
 
 ## 3. Guided walkthrough
 
-### Experiment A — Frequency split (~8 min, LP14)
+### Experiment A — Frequency split (~8 min)
 
 1. Load **Balanced sine pitch**. Note τ = 0.49 s and \(f_c\) = 0.33 Hz, with the 0.25 Hz motion near the crossover.
 2. Load **Trust the gyro** (τ ≈ 10 s). The motion is smooth, but the bias drags the angle away before the accelerometer can correct it.
 3. Load **Trust the accelerometer** (τ = 0.01 s). There is no drift, but the accelerometer noise passes straight through.
 4. Load **Step pitch**. The gyro path follows the step instantly, while the accel path takes about τ.
 
-### Experiment B — Kalman filter (~10 min, LP16)
+### Experiment B — Kalman filter (~10 min)
 
 1. Load **Kalman filter estimates the bias**. In the bias tab the estimate converges to 1°/s and the ±2σ band shrinks.
 2. Read the block diagram: the Kalman filter's steady state equals a complementary filter with τ_eq ≈ 2.4 s.
 3. Load **Kalman tuning: Q vs R**. Sweep **KF R** from 0.3 to 20 and watch α_eq and the noise vs drift trade.
 
-### Experiment C — Acceleration (~8 min, LP17)
+### Experiment C — Acceleration (~8 min)
 
 1. Load **Surge spoofs the accel**. The 4 s surge reads as nose-up, and the KF's bias estimate is corrupted.
 2. Load **Gate the accel during surge**. Most surge samples are rejected (red marks), but some pass when the pitch cancels the norm change.
 
-### Experiment D — 3-D and observability (~10 min, LP15, LP16)
+### Experiment D — 3-D and observability (~10 min)
 
 1. Load **3-D Mahony without magnetometer**. Roll and pitch converge within seconds. Yaw drifts about 25° per minute, and \(\hat b_z\) never reaches the true 0.6°/s.
 2. Load **3-D Mahony with magnetometer**. Everything converges.

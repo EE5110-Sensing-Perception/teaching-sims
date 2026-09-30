@@ -2,8 +2,7 @@
 
 **Demo:** `teaching-sims demo magnetometer`  
 **Prerequisites:** [08 — Accelerometers](08-accelerometer.md) (tilt from gravity), [10 — Frames and rotations](10-attitude.md)  
-**Learning outcomes:** LP9, LP13 (see [IMU learning outcomes](IMU-learning-outcomes.md))  
-**Slides:** sections B and C of the IMU deck
+**Slides:** sections “Inertial sensors” and “Sensor errors and calibration” of the IMU deck
 
 By the end you should be able to:
 
@@ -16,7 +15,7 @@ By the end you should be able to:
 
 ## 1. Principles
 
-### 1.1 The Earth field (LP9)
+### 1.1 The Earth field
 
 With total intensity \(F\), inclination (dip) \(I\) and declination \(D\):
 
@@ -39,7 +38,7 @@ y_h = b_y\cos\phi - b_z\sin\phi .
 - **True heading** \(=\psi_m + D\). The declination comes from a model such as the WMM.
 - **Error chain:** errors in the accelerometer tilt feed straight into heading through the large vertical field.
 
-### 1.3 Hard and soft iron (LP13)
+### 1.3 Hard and soft iron
 
 \[
 \tilde{\mathbf b} = S\,\mathbf b + \mathbf h

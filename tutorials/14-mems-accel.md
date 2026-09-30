@@ -2,8 +2,7 @@
 
 **Demo:** `teaching-sims demo mems-accel`  
 **Prerequisites:** [10 — Frames and rotations](10-attitude.md) helpful but not required  
-**Learning outcomes:** LP6, plus the sensor-level origin of bias (LP10) (see [IMU learning outcomes](IMU-learning-outcomes.md))  
-**Slides:** section B of the IMU deck  
+**Slides:** section “Inertial sensors” of the IMU deck  
 **Goal:** see how a spring–mass proof mass and capacitive comb fingers turn acceleration into a signal; how **bias** and an **impulse** change that signal differently; and why sensitivity, bandwidth and noise trade against each other
 
 ![MEMS comb-drive schematic](assets/mems-comb-drive.png)

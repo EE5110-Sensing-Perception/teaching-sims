@@ -1,0 +1,246 @@
+<!-- title: Guide 2 — How a MEMS Accelerometer Works -->
+<div class="overview">
+<p><strong>Demo:</strong> <code>teaching-sims demo mems-accel</code><br>
+<strong>Prerequisites:</strong> Newton's second law, basic ODEs, complex numbers; Guide 1 helpful but not required<br>
+<strong>Time:</strong> about 1.5 hours of reading, plus the demo walkthrough (Tutorial 14)</p>
+<p>By the end of this guide you should be able to:</p>
+<ul>
+<li>model an accelerometer as a spring–mass–damper and write its equation of motion;</li>
+<li>define natural frequency, damping ratio, quality factor and bandwidth, and compute them from \(m\), \(k\), \(c\);</li>
+<li>read a frequency response and predict whether a vibration will be passed, amplified or attenuated;</li>
+<li>explain how a differential comb capacitor turns a nanometre displacement into a signal;</li>
+<li>explain the trade-off between sensitivity, bandwidth and noise, and where the noise floor comes from;</li>
+<li>explain two physical origins of accelerometer bias, and why sampling can alias vibration.</li>
+</ul>
+</div>
+
+<h2>1. Why this matters</h2>
+<p>The accelerometer in a phone, a drone flight controller or a robot IMU is a MEMS device (micro-electro-mechanical system): a tiny silicon mass, a few micrograms, suspended on springs and surrounded by electrodes. Every property you will meet on a datasheet, such as range, bandwidth, noise density, bias and vibration sensitivity, is set by that mechanical structure and its electronics. Understanding the structure explains why an accelerometer on a vibrating motor mount produces nonsense, why datasheets specify an internal low-pass filter, and why higher-grade sensors are physically larger.</p>
+
+<h2>2. Key terms</h2>
+<table>
+<tr><th style="width:26%">Term</th><th>Definition</th></tr>
+<tr><td>Proof mass \(m\)</td><td>The movable mass whose motion relative to the chip is measured. Typically micrograms (\(10^{-9}\) kg) in MEMS.</td></tr>
+<tr><td>Suspension / spring stiffness \(k\)</td><td>The thin silicon beams holding the mass. The restoring force is \(-kx\) (Hooke's law), with \(k\) in N/m.</td></tr>
+<tr><td>Damping coefficient \(c\)</td><td>Viscous loss (mostly squeezed gas between fingers). The force is \(-c\dot x\), with \(c\) in N·s/m.</td></tr>
+<tr><td>Natural frequency \(f_0\)</td><td>The frequency at which the undamped mass would oscillate: \(\omega_0=\sqrt{k/m}\), \(f_0=\omega_0/2\pi\).</td></tr>
+<tr><td>Damping ratio \(\zeta\)</td><td>Dimensionless measure of damping: \(\zeta=c/(2\sqrt{km})\). \(\zeta&lt;1\) rings, \(\zeta=1\) is critically damped, \(\zeta&gt;1\) is overdamped.</td></tr>
+<tr><td>Quality factor \(Q\)</td><td>\(Q=1/(2\zeta)\). High \(Q\) means little damping and a sharp resonance.</td></tr>
+<tr><td>Transfer function / frequency response</td><td>The ratio of output to input for a sinusoid at each frequency. Its magnitude is the gain; its angle is the phase shift.</td></tr>
+<tr><td>Bandwidth (−3 dB)</td><td>The frequency at which the gain falls to \(1/\sqrt2\approx0.707\) of its low-frequency value (half the power).</td></tr>
+<tr><td>Resonance</td><td>Amplified response near \(f_0\) when damping is light.</td></tr>
+<tr><td>Sensitivity (mechanical)</td><td>Displacement per unit acceleration, \(x/a=1/\omega_0^2\), often quoted in nm/g.</td></tr>
+<tr><td>Capacitance</td><td>Charge stored per volt between two conductors. For parallel plates \(C=\varepsilon_0A/d\), with area \(A\) and gap \(d\).</td></tr>
+<tr><td>Differential measurement</td><td>Measuring the difference of two sensors that respond in opposite senses, which doubles the signal and cancels common effects.</td></tr>
+<tr><td>Noise density</td><td>Noise amplitude per square root of bandwidth, e.g. µg/√Hz. Multiply by \(\sqrt{\text{bandwidth}}\) to get an RMS noise.</td></tr>
+<tr><td>Bias (offset)</td><td>A nonzero output when the true input is zero.</td></tr>
+<tr><td>Aliasing</td><td>A signal above half the sample rate appearing as a false lower frequency after sampling.</td></tr>
+<tr><td>g</td><td>Standard gravity, 9.80665 m/s². "1 mg" is one thousandth of that; "1 µg" one millionth.</td></tr>
+</table>
+
+<h2>3. Background</h2>
+<h3>3.1 Newton's law in an accelerating box</h3>
+<p>Newton's second law, \(F=ma\), holds in an <em>inertial</em> (non-accelerating) frame. An accelerometer measures motion of the mass <em>relative to its case</em>, and the case is accelerating. Let the case have acceleration \(a_{\mathrm{ext}}\) and let \(x\) be the displacement of the mass relative to the case. The mass's inertial acceleration is \(a_{\mathrm{ext}}+\ddot x\), and the only forces on it are the spring and damper:</p>
+$$m(a_{\mathrm{ext}}+\ddot x) = -kx - c\dot x
+\quad\Longrightarrow\quad
+m\ddot x + c\dot x + kx = -m\,a_{\mathrm{ext}} .$$
+<p>So the case acceleration acts on the mass like an applied force \(-m\,a_{\mathrm{ext}}\). If you accelerate the chip to the right, the mass lags behind, to the left.</p>
+<div class="key"><strong>Key idea.</strong> An accelerometer is a spring scale. At steady state the spring force balances the "inertial force": \(kx=-m a_{\mathrm{ext}}\), so \(x=-a_{\mathrm{ext}}/\omega_0^2\). Measure \(x\), multiply by \(-\omega_0^2\), and you have the acceleration.</div>
+<p>Guide 4 will refine what "acceleration" means here: gravity acts on the mass and the case equally, so the sensor cannot feel it, and the quantity actually measured is the <em>specific force</em>.</p>
+
+<h3>3.2 Second-order systems in one page</h3>
+<p>Dividing by \(m\) and substituting \(\omega_0=\sqrt{k/m}\) and \(\zeta=c/(2m\omega_0)\) gives the standard form</p>
+$$\ddot x + 2\zeta\omega_0\dot x + \omega_0^2 x = -a_{\mathrm{ext}} .$$
+<p>This one equation describes a car suspension, a guitar string, an RLC circuit and a MEMS proof mass. Its behaviour depends on only two numbers:</p>
+<ul>
+<li>\(\omega_0\) sets the <strong>time scale</strong>: the response time is roughly one period, \(1/f_0\).</li>
+<li>\(\zeta\) sets the <strong>shape</strong>. Below 1, the response overshoots and rings with a decaying oscillation. At \(\zeta\approx0.7\) it reaches the new value quickly with only about 5 % overshoot. Above 1 it creeps up slowly without overshoot.</li>
+</ul>
+<figure><img src="img/g_msd_step.png" alt="Step responses of a second-order system for damping ratios 0.1, 0.35, 0.707 and 2. Low damping overshoots and rings; 0.707 settles fastest with small overshoot; 2 creeps slowly."><figcaption><strong>Figure 1.</strong> Response of a second-order sensor to a sudden constant acceleration (a step). The time axis is in periods of the natural frequency, so this plot applies to any \(f_0\).</figcaption></figure>
+
+<h3>3.3 Frequency response</h3>
+<p>If the input is a sinusoid \(a_{\mathrm{ext}}=A\sin\omega t\), a linear system's output is a sinusoid at the same frequency, scaled and shifted. With the readout scaled so that the gain is 1 at DC, the gain is</p>
+$$|H(\omega)| = \frac{\omega_0^2}{\sqrt{(\omega_0^2-\omega^2)^2 + (2\zeta\omega_0\omega)^2}} .$$
+<ul>
+<li>Well below \(f_0\): \(|H|\approx1\). The sensor reports the true acceleration.</li>
+<li>Near \(f_0\): \(|H|\approx 1/(2\zeta)=Q\). With light damping, vibration is <strong>amplified</strong>.</li>
+<li>Well above \(f_0\): \(|H|\approx(f_0/f)^2\). The mass cannot follow and the vibration is <strong>attenuated</strong>, falling 100× per decade.</li>
+</ul>
+<div class="def"><strong>Decibels.</strong> A gain \(G\) in decibels is \(20\log_{10}G\). The "−3 dB point" is where \(G=1/\sqrt2=0.707\). Log–log plots of gain are called Bode magnitude plots.</div>
+<figure><img src="img/mems_accel_response.png" alt="Frequency response of the accelerometer for a soft and a stiff spring and two damping ratios: flat at low frequency, a resonant peak for low damping, then roll-off."><figcaption><strong>Figure 2.</strong> Frequency response for a soft spring (0.5 N/m) and a stiff spring (8 N/m). The dotted curve shows light damping (\(\zeta=0.1\)) producing a resonant peak. The dashed line marks −3 dB.</figcaption></figure>
+
+<h2>4. From displacement to signal: the comb capacitor</h2>
+<p>The mass carries rows of <em>fingers</em> interleaved with fixed fingers anchored to the substrate, like two combs pushed together. Each moving finger sits between two fixed fingers, with a gap \(g_0\) on each side (a couple of µm).</p>
+<figure><img src="img/mems_comb_drive.png" alt="Schematic of a MEMS comb-drive accelerometer: a movable proof mass on suspension springs, with interdigitated fixed and moving comb fingers."><figcaption><strong>Figure 3.</strong> MEMS comb-drive accelerometer. The proof mass moves on its suspension; its fingers move between fixed fingers, changing the two capacitances in opposite directions.</figcaption></figure>
+<p>When the mass moves by \(x\), one gap shrinks and the other grows:</p>
+$$C_1=\frac{N\varepsilon_0A}{g_0-x},\qquad C_2=\frac{N\varepsilon_0A}{g_0+x},\qquad
+\Delta C=C_1-C_2\approx 2C_0\frac{x}{g_0}\quad(x\ll g_0),$$
+<p>where \(N\) is the number of finger pairs and \(C_0=N\varepsilon_0A/g_0\) is the capacitance at rest. Each capacitance alone is a nonlinear, \(1/\text{gap}\) function of \(x\). Their <em>difference</em> is almost linear, and anything that changes both equally (temperature, supply voltage, parasitic capacitance) cancels.</p>
+<figure><img src="img/g_comb_capacitance.png" alt="Capacitance against displacement: C1 rises and C2 falls nonlinearly, while their difference is close to a straight line through zero."><figcaption><strong>Figure 4.</strong> The two comb capacitances and their difference for the demo's geometry (\(g_0=2\) µm). The difference follows the linear approximation closely for small \(x\).</figcaption></figure>
+<p>A capacitance-to-voltage converter reads \(\Delta C\), and the result is scaled to acceleration and digitised. Many higher-grade sensors instead run <em>closed loop</em>: electrostatic forces push the mass back to the centre, and the force needed is the measurement. That keeps \(x\approx0\), which improves linearity and range.</p>
+
+<h2>5. Sensitivity, bandwidth and noise</h2>
+<h3>5.1 The sensitivity–bandwidth trade</h3>
+<p>The static displacement per unit acceleration is \(x/a = 1/\omega_0^2\). A <em>softer</em> spring (smaller \(k\)) moves more per g, which is easier to detect above electronic noise. But it lowers \(\omega_0\), and the bandwidth scales with \(\omega_0\). You cannot have both: halving \(f_0\) quadruples the sensitivity.</p>
+
+<h3>5.2 The Brownian noise floor</h3>
+<p>Gas molecules hit the mass randomly. The same damping that dissipates energy also injects random forces; this is the fluctuation–dissipation theorem. The result is a white acceleration noise with density</p>
+$$a_n = \frac{\sqrt{4k_BTc}}{m} = \sqrt{\frac{4k_BT\,\omega_0}{m\,Q}}\qquad[\text{m/s}^2/\sqrt{\text{Hz}}],$$
+<p>where \(k_B=1.38\times10^{-23}\) J/K is Boltzmann's constant and \(T\) is the temperature in kelvin. For a given \(f_0\) and \(Q\), a <strong>heavier mass is quieter</strong>, as \(1/\sqrt m\). This is one reason tactical-grade MEMS accelerometers are physically larger, and why they are often packaged in vacuum (high \(Q\)) with closed-loop control supplying the damping.</p>
+<div class="def"><strong>Reading a noise density.</strong> A density of 100 µg/√Hz with a 100 Hz bandwidth gives an RMS noise of \(100\times\sqrt{100}=1000\) µg = 1 mg. Halving the bandwidth reduces the RMS noise by \(\sqrt2\), not 2.</div>
+
+<h3>5.3 Vibration, filtering and aliasing</h3>
+<p>Robots vibrate: motors, propellers and gearboxes produce strong vibration from tens of Hz to several kHz. Three things can happen to it:</p>
+<ol>
+<li><strong>Below the bandwidth</strong>, it is measured faithfully. That is correct, but it is noise as far as attitude estimation is concerned (Guide 4 shows averaging removes it).</li>
+<li><strong>Near a lightly damped resonance</strong>, it is amplified, and the sensor may even saturate.</li>
+<li><strong>Above the sample rate's Nyquist frequency</strong> \(f_s/2\), and not removed by an analogue filter before sampling, it <em>aliases</em>. The samples look exactly like a lower-frequency signal at \(|f - k f_s|\) for the nearest integer \(k\).</li>
+</ol>
+<figure><img src="img/g_aliasing.png" alt="An 1100 Hz sine sampled at 1 kHz; the sample points trace out a 100 Hz sine."><figcaption><strong>Figure 5.</strong> Aliasing: a 1100 Hz vibration sampled at 1000 Hz produces samples indistinguishable from a 100 Hz signal. No digital processing after sampling can undo this.</figcaption></figure>
+<div class="warn"><strong>Practical consequence.</strong> Configure the IMU's internal anti-alias (digital low-pass) filter, mount the IMU on vibration isolators, and never assume that a low output data rate means vibration has been "averaged away". It may have aliased into the band you care about.</div>
+
+<h2>6. Where bias comes from</h2>
+<p>A perfect sensor at rest in zero acceleration outputs zero. Real sensors do not. Two physically different mechanisms produce the same symptom:</p>
+<table>
+<tr><th>Mechanism</th><th>What happens</th><th>Looks like</th></tr>
+<tr><td>Electronic offset</td><td>The mass is centred and the gaps are equal, but the readout electronics add an offset.</td><td>Constant bias</td></tr>
+<tr><td>Mechanical rest offset</td><td>Residual fabrication or packaging stress leaves the mass off-centre at rest, so \(\Delta C\neq0\).</td><td>Constant bias \(= -\omega_0^2 x_{\mathrm{offset}}\)</td></tr>
+</table>
+<p>Both drift with temperature and with package stress (e.g. after soldering), which is why the bias changes each time the sensor is powered up and during a run. Guide 4 shows how to calibrate the part that is constant and Guide 7 how a filter estimates the part that is not.</p>
+
+<h2>7. Worked examples</h2>
+
+<div class="example">
+<h4>Example 2.1 — Natural frequency and sensitivity</h4>
+<p><strong>Problem.</strong> The demo's default proof mass is \(m=10\) µg \(=1.0\times10^{-8}\) kg on a suspension of \(k=2.0\) N/m. Find \(f_0\) and the displacement for a 1 g acceleration.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(\omega_0=\sqrt{k/m}=\sqrt{2.0/10^{-8}}=\sqrt{2\times10^8}=14\,142\) rad/s.</li>
+<li>\(f_0=\omega_0/2\pi=2251\) Hz.</li>
+<li>\(x = g/\omega_0^2 = 9.807/(2\times10^8)=4.90\times10^{-8}\) m \(=49\) nm.</li>
+</ol>
+<p><strong>Interpretation.</strong> 49 nm is roughly one thousandth of the width of a human hair. A 1 mg signal moves the mass by 0.05 nm, less than the diameter of an atom. MEMS accelerometers work by averaging capacitance over a large finger area.</p>
+</div>
+
+<div class="example">
+<h4>Example 2.2 — Damping, Q and bandwidth</h4>
+<p><strong>Problem.</strong> With \(\zeta=0.35\), find the damping coefficient \(c\), the quality factor, and whether the response has a resonant peak. The demo reports a bandwidth of 3.19 kHz. Why is that above \(f_0\)?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(c=2\zeta m\omega_0=2(0.35)(10^{-8})(14\,142)=9.9\times10^{-5}\) N·s/m.</li>
+<li>\(Q=1/(2\zeta)=1.43\).</li>
+<li>A resonant peak exists when \(\zeta&lt;1/\sqrt2=0.707\). Here \(\zeta=0.35\), so the gain rises above 1 before rolling off, and the −3 dB point is pushed beyond \(f_0\) (to \(1.42 f_0 = 3.19\) kHz).</li>
+</ol>
+<p><strong>Interpretation.</strong> Bandwidth by the −3 dB definition does not guarantee accurate measurement: between about 1 and 3 kHz this sensor <em>over</em>-reports vibration. With \(\zeta=0.707\) the bandwidth equals \(f_0\) and there is no peak (a "maximally flat" response).</p>
+</div>
+
+<div class="example">
+<h4>Example 2.3 — How big is the capacitance change?</h4>
+<p><strong>Problem.</strong> The demo's comb has \(N=8\) finger pairs, overlap area \(A=500\ \mu\text{m}^2\) and gap \(g_0=2\) µm. Find \(C_0\) and \(\Delta C\) for 1 g.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(C_0=N\varepsilon_0A/g_0 = 8\times(8.854\times10^{-12})(500\times10^{-12})/(2\times10^{-6})=1.77\times10^{-14}\) F \(=17.7\) fF.</li>
+<li>\(\Delta C\approx2C_0x/g_0=2(17.7\ \text{fF})(49\ \text{nm})/(2000\ \text{nm})=0.87\) fF \(=870\) aF.</li>
+</ol>
+<p><strong>Interpretation.</strong> The full 1 g signal is under a femtofarad; a 1 mg signal is under an attofarad (\(10^{-18}\) F). Real devices use far more fingers than the demo, and the readout electronics sit on the same die to avoid parasitic capacitance swamping the signal.</p>
+</div>
+
+<div class="example">
+<h4>Example 2.4 — The Brownian noise floor</h4>
+<p><strong>Problem.</strong> Compute the Brownian noise density for the default sensor at \(T=300\) K. What happens if the mass is doubled while keeping \(f_0\) and \(\zeta\) the same?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(4k_BTc=4(1.381\times10^{-23})(300)(9.9\times10^{-5})=1.64\times10^{-24}\).</li>
+<li>\(a_n=\sqrt{1.64\times10^{-24}}/10^{-8}=1.28\times10^{-4}\) m/s²/√Hz \(=13\) µg/√Hz.</li>
+<li>Doubling \(m\) (and \(k\), to keep \(f_0\)) at fixed \(\zeta\) doubles \(c\), so \(a_n\propto\sqrt{c}/m\propto\sqrt{2}/2\): the floor falls to \(13/\sqrt2=9.2\) µg/√Hz.</li>
+</ol>
+<p><strong>Interpretation.</strong> Consumer accelerometers are typically 100–300 µg/√Hz, dominated by electronic rather than Brownian noise. Brownian noise sets the ultimate floor that no electronics can beat.</p>
+</div>
+
+<div class="example">
+<h4>Example 2.5 — Vibration above the bandwidth</h4>
+<p><strong>Problem.</strong> A 6 kHz vibration of amplitude 8 m/s² reaches the default sensor (\(f_0=2251\) Hz, \(\zeta=0.35\)). What amplitude is reported?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Frequency ratio \(r=f/f_0=6000/2251=2.67\).</li>
+<li>\(|H|=1/\sqrt{(1-r^2)^2+(2\zeta r)^2}=1/\sqrt{(-6.11)^2+(1.87)^2}=1/6.39=0.157\).</li>
+<li>Reported amplitude: \(0.157\times8=1.25\) m/s².</li>
+</ol>
+<p><strong>Interpretation.</strong> Attenuated, but not removed. If the output is sampled at 1 kHz without an anti-alias filter, those 1.25 m/s² alias to \(|6000-6\times1000|=0\) Hz: they appear as a constant offset whose size depends on the relative phase. Vibration can become bias.</p>
+</div>
+
+<div class="example">
+<h4>Example 2.6 — Choosing a spring</h4>
+<p><strong>Problem.</strong> Compare springs of 0.5 N/m and 8 N/m with the same 10 µg mass and \(\zeta=0.7\).</p>
+<p><strong>Solution.</strong> \(f_0\propto\sqrt k\) and \(x/g\propto1/k\):</p>
+<table>
+<tr><th>\(k\) (N/m)</th><th>\(f_0\) (Hz)</th><th>Bandwidth (Hz)</th><th>Sensitivity (nm/g)</th></tr>
+<tr><td>0.5</td><td>1125</td><td>1137</td><td>196</td></tr>
+<tr><td>8</td><td>4502</td><td>4547</td><td>12.3</td></tr>
+</table>
+<p><strong>Interpretation.</strong> A 16× stiffer spring gives 4× the bandwidth and 1/16 of the displacement per g. A vibration-monitoring sensor chooses the stiff spring; a low-noise tilt sensor chooses the soft one.</p>
+</div>
+
+<h2>8. Common mistakes</h2>
+<ul>
+<li>Treating the −3 dB bandwidth as "the range where the sensor is accurate". With light damping, the response is far from 1 near \(f_0\).</li>
+<li>Assuming a low output data rate filters vibration. Without an anti-alias filter, it aliases.</li>
+<li>Comparing noise figures without the bandwidth: µg/√Hz is a density, not an RMS value.</li>
+<li>Believing a centred-looking mass means zero bias. Electronics can add offset independently.</li>
+</ul>
+
+<h2>9. Using the demo</h2>
+<div class="demo">
+<p>Run <code>teaching-sims demo mems-accel</code> and load these scenarios:</p>
+<table>
+<tr><th>Scenario</th><th>Concept</th><th>What to look for</th></tr>
+<tr><td>At rest (ideal) / Constant acceleration</td><td>§3.1</td><td>The mass settles at \(x=-a/\omega_0^2\) and \(a_{\mathrm{meas}}\) tracks \(a_{\mathrm{ext}}\).</td></tr>
+<tr><td>Output bias / Mechanical offset</td><td>§6</td><td>Same symptom, different cause: centred fingers vs visibly offset fingers.</td></tr>
+<tr><td>Impulse then ring-down / Overdamped impulse</td><td>§3.2</td><td>Ringing for \(\zeta&lt;1\); a clean return for \(\zeta\gtrsim1\).</td></tr>
+<tr><td>Soft spring</td><td>§5.1</td><td>Drag Spring k: nm/g falls as \(1/k\), bandwidth rises as \(\sqrt k\). Double the proof mass: the Brownian floor falls.</td></tr>
+<tr><td>Vibration above bandwidth</td><td>§5.3, Ex. 2.5</td><td>The reported amplitude is small and phase-shifted; sweep through \(f_0\) with low \(\zeta\) to see amplification.</td></tr>
+</table>
+<p>The walkthrough and checkpoint questions are in Tutorial 14.</p>
+</div>
+
+<h2>10. Practice problems</h2>
+<ol>
+<li>A sensor has \(f_0=5\) kHz. What is the static displacement per g?</li>
+<li>For \(m=10\) µg and \(k=2\) N/m, what damping coefficient gives \(\zeta=0.707\)?</li>
+<li>A resonance has \(\zeta=0.1\). By what factor is vibration at \(f_0\) amplified?</li>
+<li>An IMU samples at 800 Hz with its anti-alias filter disabled. A propeller produces vibration at 770 Hz. At what frequency does it appear in the data?</li>
+<li>A datasheet gives 150 µg/√Hz noise and you configure a 50 Hz bandwidth. What RMS noise do you expect, in mg and in m/s²?</li>
+<li>Explain in one sentence each why (a) a softer spring is more sensitive, (b) a heavier mass is quieter.</li>
+<li>Why does the differential capacitance \(\Delta C\) cancel a temperature change that expands both gaps equally?</li>
+</ol>
+
+<h2>11. Summary of key equations</h2>
+<table>
+<tr><th>Quantity</th><th>Equation</th></tr>
+<tr><td>Equation of motion</td><td>\(m\ddot x+c\dot x+kx=-m\,a_{\mathrm{ext}}\)</td></tr>
+<tr><td>Natural frequency, damping, Q</td><td>\(\omega_0=\sqrt{k/m},\quad \zeta=c/(2m\omega_0),\quad Q=1/(2\zeta)\)</td></tr>
+<tr><td>Static sensitivity</td><td>\(x/a=1/\omega_0^2\)</td></tr>
+<tr><td>Normalised gain</td><td>\(|H|=\omega_0^2/\sqrt{(\omega_0^2-\omega^2)^2+(2\zeta\omega_0\omega)^2}\)</td></tr>
+<tr><td>Differential capacitance</td><td>\(\Delta C\approx2C_0x/g_0,\quad C_0=N\varepsilon_0A/g_0\)</td></tr>
+<tr><td>Brownian noise</td><td>\(a_n=\sqrt{4k_BTc}/m\)</td></tr>
+<tr><td>RMS noise from density</td><td>\(\sigma=a_n\sqrt{B}\)</td></tr>
+<tr><td>Alias frequency</td><td>\(f_{\mathrm{alias}}=|f-kf_s|\), nearest integer \(k\)</td></tr>
+</table>
+
+<h2>12. Answers to practice problems</h2>
+<ol>
+<li class="answer">\(\omega_0=2\pi\times5000=31\,416\) rad/s; \(x=9.807/31\,416^2=9.9\) nm.</li>
+<li class="answer">\(c=2\zeta m\omega_0=2(0.707)(10^{-8})(14\,142)=2.0\times10^{-4}\) N·s/m.</li>
+<li class="answer">\(1/(2\zeta\sqrt{1-\zeta^2})\approx5.0\). (Exactly at \(f_0\) the gain is \(1/(2\zeta)=5\); the peak is marginally higher, just below \(f_0\).)</li>
+<li class="answer">\(|770-800|=30\) Hz. A 30 Hz oscillation in attitude would look like a real motion to a controller.</li>
+<li class="answer">\(150\sqrt{50}=1061\) µg ≈ 1.06 mg ≈ 0.0104 m/s² RMS.</li>
+<li class="answer">(a) The spring force \(kx\) must balance \(ma\); a smaller \(k\) needs a larger \(x\). (b) The random thermal force grows only as \(\sqrt m\) (via \(c\) at fixed \(\zeta,\omega_0\)) while the inertia grows as \(m\), so the acceleration noise falls as \(1/\sqrt m\).</li>
+<li class="answer">If both gaps change by the same amount, \(C_1\) and \(C_2\) change together and their difference stays (to first order) at the value set by \(x\). Only an opposite change of the gaps, i.e. a displacement of the mass, alters \(\Delta C\).</li>
+</ol>
+
+<h2>13. Further reading</h2>
+<ul>
+<li>V. Kaajakari, <em>Practical MEMS</em>, Small Gear Publishing, 2009, Ch. 3–5 and 17 (accelerometers).</li>
+<li>Analog Devices, "Accelerometer specifications: quick definitions" and "MEMS vibration monitoring" application notes.</li>
+<li>T. B. Gabrielson, "Mechanical-thermal noise in micromachined acoustic and vibration sensors", <em>IEEE Trans. Electron Devices</em>, 40(5), 1993.</li>
+</ul>

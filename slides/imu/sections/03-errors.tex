@@ -1,7 +1,7 @@
-% Section C: error models, characterisation and calibration (LP10-LP13).
+% Section C: error models, characterisation and calibration.
 \section{Sensor errors and calibration}
 
-\begin{frame}{Deterministic errors \hfill \lp{10}}
+\begin{frame}{Deterministic errors}
   \begin{columns}[T]
     \begin{column}{0.52\textwidth}
       \small
@@ -30,10 +30,10 @@
       \end{alertblock}
     \end{column}
   \end{columns}
-  \tryit{accelerometer}{scale\_misalignment}
+  \examplebar{accelerometer}{scale\_misalignment}
 \end{frame}
 
-\begin{frame}{Stochastic errors and how they grow \hfill \lp{11}}
+\begin{frame}{Stochastic errors and how they grow}
   \begin{columns}[T]
     \begin{column}{0.45\textwidth}
       \footnotesize
@@ -57,10 +57,10 @@
       \includegraphics[width=\linewidth]{gyro_error_growth.pdf}
     \end{column}
   \end{columns}
-  \tryit{gyroscope}{angle\_random\_walk, bias\_instability, scale\_factor}
+  \examplebar{gyroscope}{angle\_random\_walk, bias\_instability, scale\_factor}
 \end{frame}
 
-\begin{frame}{Allan variance: the IMU fingerprint \hfill \lp{12}}
+\begin{frame}{Allan variance: the IMU fingerprint}
   \begin{columns}[T]
     \begin{column}{0.42\textwidth}
       \small
@@ -80,10 +80,10 @@
       \includegraphics[width=\linewidth]{allan_signatures.pdf}
     \end{column}
   \end{columns}
-  \tryit{gyroscope}{allan\_industrial}
+  \examplebar{gyroscope}{allan\_industrial}
 \end{frame}
 
-\begin{frame}{From datasheet to simulation (and back) \hfill \lp{12}}
+\begin{frame}{From datasheet to simulation (and back)}
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
       \scriptsize
@@ -109,10 +109,10 @@
       \includegraphics[width=\linewidth]{grade_allan.pdf}
     \end{column}
   \end{columns}
-  \tryit{gyroscope}{allan\_industrial (switch the IMU grade)}
+  \examplebar{gyroscope}{allan\_industrial (switch the IMU grade)}
 \end{frame}
 
-\begin{frame}{Six-position accelerometer calibration \hfill \lp{13}}
+\begin{frame}{Six-position accelerometer calibration}
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
       \small
@@ -129,10 +129,10 @@
       \includegraphics[width=\linewidth]{accel_six_position.pdf}
     \end{column}
   \end{columns}
-  \tryit{accelerometer}{six\_position\_cal}
+  \examplebar{accelerometer}{six\_position\_cal}
 \end{frame}
 
-\begin{frame}{Magnetometer calibration: the compass swing \hfill \lp{13}}
+\begin{frame}{Magnetometer calibration: the compass swing}
   \begin{columns}[T]
     \begin{column}{0.4\textwidth}
       \small
@@ -148,5 +148,5 @@
       \includegraphics[width=\linewidth]{mag_iron_calibration.pdf}
     \end{column}
   \end{columns}
-  \tryit{magnetometer}{hard\_iron, soft\_iron, iron\_calibrated}
+  \examplebar{magnetometer}{hard\_iron, soft\_iron, iron\_calibrated}
 \end{frame}

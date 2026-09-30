@@ -1,0 +1,199 @@
+<!-- title: Guide 6 — Magnetometers: Heading, Tilt Compensation and Calibration -->
+<div class="overview">
+<p><strong>Demo:</strong> <code>teaching-sims demo magnetometer</code><br>
+<strong>Prerequisites:</strong> Guide 1 (rotations, atan2), Guide 4 (tilt from the accelerometer, least squares)<br>
+<strong>Time:</strong> about 1.5 hours of reading, plus the demo walkthrough (Tutorial 12)</p>
+<p>By the end of this guide you should be able to:</p>
+<ul>
+<li>describe the Earth's magnetic field by its intensity, inclination (dip) and declination;</li>
+<li>compute magnetic and true heading from a level magnetometer reading;</li>
+<li>derive tilt compensation, and explain why pitch and roll errors are amplified at high dip;</li>
+<li>explain hard-iron and soft-iron distortion, and calibrate them with a compass swing and ellipse fit;</li>
+<li>detect world-fixed magnetic disturbances with field-magnitude and dip checks.</li>
+</ul>
+</div>
+
+<h2>1. Why this matters</h2>
+<p>Guides 4 and 5 left one gap: the accelerometer cannot see yaw, and the gyro's yaw drifts. A magnetometer measures the Earth's magnetic field, which has a horizontal component pointing (roughly) north, and so provides an absolute heading reference. It is cheap and small, and it is included in almost every "9-axis" IMU. It is also the least trustworthy sensor on the robot: steel, motors and wiring all distort the field. Using it well means knowing what can be calibrated and what can only be detected and rejected.</p>
+
+<h2>2. Key terms</h2>
+<table>
+<tr><th style="width:26%">Term</th><th>Definition</th></tr>
+<tr><td>Magnetic flux density \(\mathbf B\)</td><td>The magnetic field vector a magnetometer measures. Units tesla (T); the Earth's field is 25–65 µT. 1 gauss = 100 µT.</td></tr>
+<tr><td>Total intensity \(F\)</td><td>The magnitude \(\|\mathbf B\|\) of the Earth's field at a location (about 49 µT in the UK and Ireland).</td></tr>
+<tr><td>Horizontal intensity \(H\), vertical intensity \(Z\)</td><td>The horizontal and vertical components: \(H=F\cos I\), \(Z=F\sin I\).</td></tr>
+<tr><td>Inclination (dip) \(I\)</td><td>The angle of the field below the horizontal. About 0° at the magnetic equator, 90° at the magnetic poles, 65–70° in northern Europe.</td></tr>
+<tr><td>Declination \(D\)</td><td>The angle from true (geographic) north to magnetic north, positive east. It varies with location and slowly with time.</td></tr>
+<tr><td>Magnetic heading \(\psi_m\)</td><td>Heading measured from magnetic north.</td></tr>
+<tr><td>True heading \(\psi\)</td><td>Heading measured from true north: \(\psi=\psi_m+D\).</td></tr>
+<tr><td>WMM / IGRF</td><td>The World Magnetic Model and International Geomagnetic Reference Field: models giving \(F\), \(I\), \(D\) for any location and date.</td></tr>
+<tr><td>Tilt compensation</td><td>Rotating the measured field back into the horizontal plane, using roll and pitch, before computing heading.</td></tr>
+<tr><td>Hard iron</td><td>A constant field added by magnetised material fixed to the robot (magnets, speaker, magnetised steel). It shifts the measurement.</td></tr>
+<tr><td>Soft iron</td><td>Magnetically soft material on the robot that bends the local field, scaling and skewing the measurement.</td></tr>
+<tr><td>Locus</td><td>The set of points traced by the measurement as the robot rotates.</td></tr>
+<tr><td>Conic / ellipse fit</td><td>Finding the ellipse that best matches a set of 2-D points by least squares.</td></tr>
+</table>
+
+<h2>3. The Earth's field</h2>
+<p>Near the surface the Earth's field is roughly that of a bar magnet tilted about 10° from the rotation axis. At a given place it is a fixed vector, described in NED by</p>
+$$\mathbf b^n = F\begin{bmatrix}\cos I\cos D\\ \cos I\sin D\\ \sin I\end{bmatrix}.$$
+<figure><img src="img/g_earth_field.png" alt="Left: side view of the field vector pointing down at 66 degrees below horizontal, with horizontal component about 20 microtesla and vertical about 45. Right: top view with true north, magnetic north offset by the declination, and the vehicle heading."><figcaption><strong>Figure 1.</strong> Left: at mid-northern latitudes the field dips steeply, so the vertical component is more than twice the horizontal one. Right: the magnetometer measures heading from magnetic north; adding the declination \(D\) gives true heading.</figcaption></figure>
+<p>Only the horizontal component \(H\) carries heading information, and it is the smaller part. At \(I=66^\circ\) (the demo's default, typical of Ireland and the UK), \(H\approx20\) µT and \(Z\approx45\) µT. Near the magnetic poles \(H\) vanishes and compasses become useless.</p>
+
+<h2>4. Heading from a level magnetometer</h2>
+<p>If the robot is level with heading \(\psi_m\) from magnetic north, the horizontal field seen in body axes (FRD) is</p>
+$$b_x=H\cos\psi_m,\qquad b_y=-H\sin\psi_m .$$
+<p>(When the nose turns east, magnetic north appears to the robot's left, so \(b_y\) goes negative.) Therefore</p>
+$$\psi_m=\operatorname{atan2}(-b_y,\ b_x),\qquad \psi=\psi_m+D .$$
+<p>Declination is not small everywhere: it is a few degrees in western Europe today but exceeds 10° in much of North America. A robot that fuses magnetometer heading with GNSS or a map in true north must apply it.</p>
+
+<h2>5. Tilt compensation</h2>
+<h3>5.1 Why tilt matters</h3>
+<p>If the robot pitches, the body x axis tilts toward or away from the steep, strong vertical field, and part of \(Z\) leaks into \(b_x\). Because \(Z\) is about twice \(H\), a modest tilt produces a large heading error.</p>
+<figure><img src="img/mag_tilt_error.png" alt="Heading error against true heading for a pitched magnetometer without tilt compensation; the error is near zero at north and south and largest at east and west."><figcaption><strong>Figure 2.</strong> Heading error of an uncompensated magnetometer pitched by 10°. The error is largest at east and west headings, where pitch rotates the body x axis in the plane containing the vertical field but not the horizontal one.</figcaption></figure>
+
+<h3>5.2 The compensation formula</h3>
+<p>Given roll \(\phi\) and pitch \(\theta\), usually from the accelerometer (Guide 4) or an attitude filter (Guide 7), undo them to get the field in a level frame that shares the robot's heading:</p>
+$$x_h = b_x\cos\theta + b_y\sin\phi\sin\theta + b_z\cos\phi\sin\theta,\qquad y_h = b_y\cos\phi - b_z\sin\phi,$$
+$$\psi_m=\operatorname{atan2}(-y_h,\ x_h).$$
+<p>This is the first two rows of \(R_y(\theta)R_x(\phi)\,\mathbf b^b\): rotate back through roll, then pitch.</p>
+<div class="warn"><strong>Error chain.</strong> Tilt compensation is only as good as the tilt. An error \(\delta\theta\) in pitch leaks \(Z\,\delta\theta\) into \(x_h\), giving a heading error of up to about \(\tan I\cdot\delta\theta\). At \(I=66^\circ\), \(\tan I=2.25\): every 1° of tilt error costs up to 2.25° of heading. Accelerometer tilt corrupted by acceleration (Guide 4 §3.3) therefore corrupts heading too.</div>
+
+<h2>6. Hard and soft iron</h2>
+<p>Material on the robot distorts the field the magnetometer sees:</p>
+$$\tilde{\mathbf b}=S\,\mathbf b+\mathbf h+\mathbf n .$$
+<ul>
+<li><strong>Hard iron</strong> \(\mathbf h\): a permanent field that rotates with the robot. It adds a constant offset in body axes.</li>
+<li><strong>Soft iron</strong> \(S\): ferrous material that concentrates or bends the Earth's field. Its effect depends on the field's direction relative to the robot, which is a matrix acting on \(\mathbf b\).</li>
+</ul>
+<p>Both are fixed to the robot, so both can be calibrated. If you rotate the robot through 360° while level, the true \((b_x,b_y)\) traces a circle of radius \(H\) centred on the origin. Hard iron shifts the circle; soft iron stretches and rotates it into an ellipse.</p>
+<figure><img class="narrow" src="img/g_iron_loci.png" alt="Loci of the horizontal field during a level 360 degree turn: a circle at the origin for an ideal sensor, a shifted circle for hard iron, and a tilted ellipse for soft iron."><figcaption><strong>Figure 3.</strong> Locus of \((b_x,b_y)\) during a level 360° swing. Ideal: circle at the origin. Hard iron: shifted circle. Soft iron: ellipse.</figcaption></figure>
+
+<h3>6.1 The compass swing and ellipse fit</h3>
+<ol>
+<li>Rotate the robot slowly through a full turn while level, logging \((b_x,b_y)\).</li>
+<li>Fit a general conic \(ax^2+bxy+cy^2+dx+ey=1\) by linear least squares: each sample gives one equation that is linear in \((a,b,c,d,e)\).</li>
+<li>The centre of the conic is the hard-iron offset \(\mathbf c\). The quadratic part gives a matrix \(W\) that maps the ellipse onto a circle.</li>
+<li>Correct live data with \(\hat{\mathbf b}=W(\tilde{\mathbf b}-\mathbf c)\), then compute heading.</li>
+</ol>
+<figure><img src="img/mag_iron_calibration.png" alt="Measured locus as an off-centre ellipse, the fitted ellipse and centre, and the calibrated locus as a circle at the origin; heading error before and after calibration."><figcaption><strong>Figure 4.</strong> Compass-swing calibration: fit the ellipse, then map it back to a circle at the origin. The heading RMS error falls from about 20° to under 1°.</figcaption></figure>
+<p>A level 2-D swing calibrates only the horizontal axes. A full 3-D calibration tumbles the sensor through as many orientations as possible and fits an <em>ellipsoid</em>; drones do this in the "compass calibration dance".</p>
+
+<h2>7. World-fixed disturbances: detect, don't calibrate</h2>
+<p>Steel beams, reinforced concrete, parked cars and power cables distort the field <em>in the world</em>. The distortion changes as the robot moves, so no calibration can remove it. Motor and actuator currents add time-varying fields on the robot. The defence is to detect bad samples:</p>
+$$\big|\,\|\tilde{\mathbf b}\|-F\,\big|&lt;\epsilon_F\ (\text{e.g. }5\,\%),\qquad |\hat I-I|&lt;\epsilon_I\ (\text{e.g. }3^\circ),$$
+<p>where \(\hat I\) is the dip computed from the measurement and the current attitude. If either check fails, skip the magnetometer update and let the gyro carry the heading (Guide 7). The checks are necessary, not sufficient: a disturbance that rotates the horizontal field without changing \(F\) or \(I\) passes them.</p>
+<div class="key"><strong>Robotics reality.</strong> Indoors and near vehicles, magnetometer heading is often unusable. Many robots instead get yaw from vision or LiDAR (visual–inertial or LiDAR–inertial odometry), which is why yaw is usually the weakest state in those systems.</div>
+
+<h2>8. Worked examples</h2>
+
+<div class="example">
+<h4>Example 6.1 — Field components</h4>
+<p><strong>Problem.</strong> The demo's default field has \(F=49.24\) µT and \(I=66.04^\circ\). Find \(H\) and \(Z\).</p>
+<p><strong>Solution.</strong> \(H=F\cos I=49.24\times0.406=20.0\) µT; \(Z=F\sin I=49.24\times0.914=45.0\) µT.</p>
+<p><strong>Interpretation.</strong> The heading signal is 20 µT; the vertical "nuisance" is 45 µT. A 1 µT disturbance is 5 % of \(H\), enough to swing heading by about 3°.</p>
+</div>
+
+<div class="example">
+<h4>Example 6.2 — Level heading and declination</h4>
+<p><strong>Problem.</strong> A level robot reads \(\mathbf b^b=[15,\ -10,\ 45]\) µT. Local declination is \(+12^\circ\) (east). Find the magnetic and true heading, and run the field check.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(\psi_m=\operatorname{atan2}(-b_y,\ b_x)=\operatorname{atan2}(10,\ 15)=33.7^\circ\).</li>
+<li>\(\psi=\psi_m+D=33.7+12=45.7^\circ\).</li>
+<li>Check: \(\|\mathbf b\|=\sqrt{15^2+10^2+45^2}=48.5\) µT, within 1.5 % of 49.24. Dip \(=\arctan(45/\sqrt{15^2+10^2})=\arctan(45/18.0)=68.2^\circ\), 2.2° from 66.04°: passes a 3° threshold.</li>
+</ol>
+<p><strong>Answer.</strong> Magnetic heading 33.7°, true heading 45.7° (north-east).</p>
+</div>
+
+<div class="example">
+<h4>Example 6.3 — Pitch without compensation</h4>
+<p><strong>Problem.</strong> The robot faces magnetic east (\(\psi_m=90^\circ\)) and pitches 10° nose-up. What heading does a level-only formula report?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Level at east: \(\mathbf b^b=[0,\ -20.0,\ 45.0]\) µT.</li>
+<li>Pitching nose-up by \(\theta\) about body y mixes x and z: \(b_x=0\cdot\cos\theta - Z\sin\theta = -45.0\sin10^\circ=-7.81\) µT; \(b_y\) is unchanged at −20.0.</li>
+<li>\(\psi_m=\operatorname{atan2}(20.0,\ -7.81)=111.3^\circ\).</li>
+</ol>
+<p><strong>Answer.</strong> A 21.3° heading error from 10° of pitch. The demo shows the same value. With tilt compensation, \(x_h=b_x\cos\theta+b_z\sin\theta=-7.81(0.985)+44.3(0.174)=0.0\) and the heading returns to 90°.</p>
+</div>
+
+<div class="example">
+<h4>Example 6.4 — Tilt error amplification</h4>
+<p><strong>Problem.</strong> Tilt compensation uses a pitch estimate that is 1° wrong. The robot heads magnetic east. What heading error results?</p>
+<p><strong>Solution.</strong> The residual leak into \(x_h\) is about \(Z\,\delta\theta=45.0\times0.01745=0.785\) µT, compared with \(H=20\) µT across. The heading error is \(\arctan(0.785/20)\approx2.25^\circ\), i.e. \(\tan I\times1^\circ\).</p>
+<p><strong>Answer.</strong> About 2.25°, confirmed numerically. At north or south headings the same pitch error produces almost no heading error.</p>
+</div>
+
+<div class="example">
+<h4>Example 6.5 — Hard iron from a swing</h4>
+<p><strong>Problem.</strong> During a level swing, \(b_x\) ranges from −12 to +28 µT and \(b_y\) from −25 to +15 µT. The locus is a circle. Estimate the hard-iron offset.</p>
+<p><strong>Solution.</strong> For a circle, the centre is the midpoint of each range: \(c_x=(28+(-12))/2=8\) µT and \(c_y=(15+(-25))/2=-5\) µT. The radius, \((28-(-12))/2=20\) µT, equals \(H\), as it should.</p>
+<p><strong>Answer.</strong> \(\mathbf h\approx(8,\ -5)\) µT: the demo's "Hard-iron offset" scenario. The min/max method only works for circles; soft iron needs the ellipse fit.</p>
+</div>
+
+<div class="example">
+<h4>Example 6.6 — Gating a disturbance</h4>
+<p><strong>Problem.</strong> Driving past a parked car, the magnetometer magnitude reads 55.0 µT where the model predicts 49.24 µT. Should the sample be used?</p>
+<p><strong>Solution.</strong> Deviation \(=(55.0-49.24)/49.24=11.7\,\%\), above a 5 % threshold. Reject it and let the gyro carry heading until the checks pass again.</p>
+</div>
+
+<h2>9. Common mistakes</h2>
+<ul>
+<li>Computing heading without tilt compensation on a robot that pitches or rolls.</li>
+<li>Calibrating on the bench and then mounting the sensor near motors or batteries. Calibrate in the final installed configuration.</li>
+<li>Swinging the robot while tilted during a 2-D calibration, which corrupts the fit.</li>
+<li>Mixing magnetic heading with a map or GNSS in true north without adding declination.</li>
+<li>Trusting the magnetometer indoors without gating.</li>
+</ul>
+
+<h2>10. Using the demo</h2>
+<div class="demo">
+<p>Run <code>teaching-sims demo magnetometer</code>:</p>
+<table>
+<tr><th>Scenario</th><th>Concept</th><th>What to look for</th></tr>
+<tr><td>Level yaw sweep / Magnetic vs true north</td><td>§4</td><td>Zero error when level; a constant 12° offset until declination is applied.</td></tr>
+<tr><td>Why pitch hurts / Pitch needs tilt compensation</td><td>§5, Ex. 6.3</td><td>In the side view, \(b_x\) changes by several µT; the error peaks at east/west and collapses with compensation.</td></tr>
+<tr><td>Hard-iron offset / Soft-iron distortion / Compass swing calibration</td><td>§6</td><td>A shifted circle, then an ellipse, then the fitted ellipse and calibrated circle.</td></tr>
+<tr><td>Local disturbance</td><td>§7</td><td>Calibration cannot fix it; the field check shows REJECT.</td></tr>
+</table>
+<p>See Tutorial 12 for the walkthrough and lab sheet.</p>
+</div>
+
+<h2>11. Practice problems</h2>
+<ol>
+<li>A level robot reads \(\mathbf b^b=[-14.1,\ -14.1,\ 45]\) µT. What is its magnetic heading?</li>
+<li>Why is the heading error from uncompensated pitch zero when the robot faces magnetic north?</li>
+<li>At a site with \(I=20^\circ\), how does the heading sensitivity to tilt error compare with \(I=66^\circ\)?</li>
+<li>Why must the 2-D compass swing be done level?</li>
+<li>List two magnetic errors calibration can fix and two it can never fix.</li>
+<li>A drone's magnetometer sits 3 cm from a motor drawing 20 A. Why is this a problem even after a careful calibration, and what are two fixes?</li>
+</ol>
+
+<h2>12. Summary of key equations</h2>
+<table>
+<tr><th>Quantity</th><th>Equation</th></tr>
+<tr><td>Earth field (NED)</td><td>\(\mathbf b^n=F[\cos I\cos D,\ \cos I\sin D,\ \sin I]\)</td></tr>
+<tr><td>Level heading</td><td>\(\psi_m=\operatorname{atan2}(-b_y,b_x),\quad \psi=\psi_m+D\)</td></tr>
+<tr><td>Tilt compensation</td><td>\(x_h=b_x c_\theta+b_y s_\phi s_\theta+b_z c_\phi s_\theta,\quad y_h=b_y c_\phi-b_z s_\phi\)</td></tr>
+<tr><td>Tilt-error sensitivity</td><td>\(\delta\psi\lesssim\tan I\cdot\delta\theta\)</td></tr>
+<tr><td>Iron model</td><td>\(\tilde{\mathbf b}=S\mathbf b+\mathbf h\); correct with \(W(\tilde{\mathbf b}-\mathbf c)\)</td></tr>
+<tr><td>Gating</td><td>\(|\|\mathbf b\|-F|&lt;5\,\%,\quad |\hat I-I|&lt;3^\circ\)</td></tr>
+</table>
+
+<h2>13. Answers to practice problems</h2>
+<ol>
+<li class="answer">\(\operatorname{atan2}(14.1,\ -14.1)=135^\circ\): south-east.</li>
+<li class="answer">Facing north, pitch rotates body x within the north–down plane. The field lies in that plane too, so \(b_x\) changes but \(b_y\) stays zero, and \(\operatorname{atan2}(0,b_x)=0\) as long as \(b_x\) stays positive.</li>
+<li class="answer">\(\tan20^\circ=0.36\) vs \(\tan66^\circ=2.25\): about 6× less sensitive near the magnetic equator.</li>
+<li class="answer">If tilted, the vertical field leaks into \(b_x,b_y\) by an amount that varies with heading, distorting the locus. The fit then attributes that distortion to soft iron and "corrects" the wrong thing.</li>
+<li class="answer">Fixable: hard iron, soft iron (both body-fixed). Not fixable: world-fixed distortion (steel structures, cars), time-varying fields from currents (unless modelled against current).</li>
+<li class="answer">The motor's field changes with current, so it is not a constant hard-iron offset. Fixes: move the magnetometer away (e.g. on a mast; the field falls roughly as \(1/r^3\)), or calibrate the field against measured motor current and subtract it.</li>
+</ol>
+
+<h2>14. Further reading</h2>
+<ul>
+<li>NOAA NCEI, <em>World Magnetic Model</em> and the online magnetic field calculator (for \(F\), \(I\), \(D\) at your location).</li>
+<li>NXP Application Note AN4246, "Calibrating an eCompass in the presence of hard- and soft-iron interference", and AN4248, "Implementing a tilt-compensated eCompass".</li>
+<li>J. F. Vasconcelos et al., "Geometric approach to strapdown magnetometer calibration in sensor frame", <em>IEEE Trans. Aerospace and Electronic Systems</em>, 47(2), 2011.</li>
+</ul>

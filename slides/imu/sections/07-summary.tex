@@ -1,50 +1,30 @@
-% Closing: learning outcomes -> demos coverage map.
+% Closing: demo scenarios by section and take-aways.
 \section{Summary}
 
-\begin{frame}{Coverage map: outcome $\to$ demo scenarios}
+\begin{frame}{Demo scenarios by section}
   \scriptsize
-  \begin{columns}[T]
-    \begin{column}{0.5\textwidth}
-      \begin{tabular}{@{}lll@{}}
-        \toprule
-        LP & Demo & Scenarios \\
-        \midrule
-        1 & attitude & ned\_vs\_ros \\
-        2 & attitude & level\_heading, quat\_double\_cover \\
-        3 & attitude & sequence\_intrinsic, order\_matters \\
-        4 & attitude & gimbal\_lock\_scan \\
-        5 & attitude & dcm\_drift, coning \\
-        6 & mems-accel & soft\_vs\_stiff, impulse\_ring \\
-        7 & accelerometer & static\_tilt, surge\_contaminates \\
-        8 & mems-gyro & coriolis\_step, quadrature\_bias \\
-        9 & magnetometer & pitched\_needs\_tc, steel\_disturbance \\
-        10 & accelerometer & scale\_misalignment \\
-        11 & gyroscope & angle\_random\_walk, bias\_instability \\
-        \bottomrule
-      \end{tabular}
-    \end{column}
-    \begin{column}{0.5\textwidth}
-      \begin{tabular}{@{}lll@{}}
-        \toprule
-        LP & Demo & Scenarios \\
-        \midrule
-        12 & gyroscope & allan\_industrial \\
-        13 & accel., mag. & six\_position\_cal, iron\_calibrated \\
-        14 & complementary & balanced\_sine, trust\_gyro \\
-        15 & complementary & mahony\_with\_mag \\
-        16 & complementary & kalman\_bias, mahony\_no\_mag \\
-        17 & complementary & surge\_gated, mahony\_surge \\
-        18 & ins & tilt\_leaks\_gravity \\
-        19 & ins & error\_budget, pitch\_gyro\_cubic \\
-        20 & ins & zupt, position\_fixes \\
-        21 & gyroscope, ins & grade\_one\_minute, grade\_consumer \\
-        22 & accelerometer & lever\_arm\_spin \\
-        \bottomrule
-      \end{tabular}
-    \end{column}
-  \end{columns}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Section & Demo & Scenarios \\
+    \midrule
+    Frames and rotations & attitude & ned\_vs\_ros, level\_heading, quat\_double\_cover, \\
+     & & sequence\_intrinsic, order\_matters, gimbal\_lock\_scan, dcm\_drift, coning \\
+    Inertial sensors & mems-accel & soft\_vs\_stiff, impulse\_ring \\
+     & accelerometer & static\_tilt, surge\_contaminates \\
+     & mems-gyro & coriolis\_step, quadrature\_bias \\
+     & magnetometer & pitched\_needs\_tc, steel\_disturbance \\
+    Errors and calibration & accelerometer & scale\_misalignment, six\_position\_cal \\
+     & gyroscope & angle\_random\_walk, bias\_instability, allan\_industrial \\
+     & magnetometer & iron\_calibrated \\
+    Attitude estimation & complementary & balanced\_sine, trust\_gyro, mahony\_with\_mag, \\
+     & & kalman\_bias, mahony\_no\_mag, surge\_gated, mahony\_surge \\
+    Inertial navigation & ins & tilt\_leaks\_gravity, error\_budget, pitch\_gyro\_cubic, zupt, position\_fixes \\
+    In practice & gyroscope, ins & grade\_one\_minute, grade\_consumer \\
+     & accelerometer & lever\_arm\_spin \\
+    \bottomrule
+  \end{tabular}
   \vfill
-  \normalsize Tutorials: \texttt{tutorials/IMU-learning-outcomes.md}. All figures are regenerated from the demo physics by \texttt{make slides}.
+  \normalsize Tutorials: \texttt{tutorials/IMU-module-map.md}. All figures are regenerated from the demo physics by \texttt{make slides}.
 \end{frame}
 
 \begin{frame}{Take-aways}

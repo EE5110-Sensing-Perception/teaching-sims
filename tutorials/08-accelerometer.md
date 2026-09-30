@@ -2,8 +2,7 @@
 
 **Demo:** `teaching-sims demo accelerometer`  
 **Prerequisites:** [10 — Frames and rotations](10-attitude.md); optional [14 — MEMS comb-drive](14-mems-accel.md) for sensor internals  
-**Learning outcomes:** LP7, LP10, LP13, LP22 (see [IMU learning outcomes](IMU-learning-outcomes.md))  
-**Slides:** sections B, C and F of the IMU deck
+**Slides:** sections “Inertial sensors”, “Sensor errors and calibration” and “In practice” of the IMU deck
 
 By the end you should be able to:
 
@@ -16,7 +15,7 @@ By the end you should be able to:
 
 ## 1. Principles
 
-### 1.1 Specific force (LP7)
+### 1.1 Specific force
 
 An accelerometer measures **specific force** \(\mathbf f=\mathbf a-\mathbf g\), the non-gravitational acceleration, resolved in body axes:
 
@@ -49,7 +48,7 @@ For a static accelerometer, any extra specific force along x is indistinguishabl
 
 Vibration is different: it is zero-mean, so averaging recovers the static pose. Bias, sustained acceleration and lever-arm terms do *not* average out.
 
-### 1.4 Deterministic error model (LP10)
+### 1.4 Deterministic error model
 
 \[
 \tilde{\mathbf f} = (I+S)\,M\,\mathbf f + \mathbf b + \mathbf n
@@ -61,13 +60,13 @@ Vibration is different: it is zero-mean, so averaging recovers the static pose. 
 
 Scale and misalignment errors grow with the signal. A level sensor mostly hides them, and a tilted one reveals them.
 
-### 1.5 Six-position calibration (LP13)
+### 1.5 Six-position calibration
 
 1. Place each axis up and then down. The true specific force is then \(\pm g\,\mathbf e_k\).
 2. Average each pose, then solve \(\bar{\mathbf y}_k = G\,\mathbf f_k + \mathbf b\) by linear least squares. There are 18 equations and 12 unknowns.
 3. Correct live data with \(\hat{\mathbf f}=\hat G^{-1}(\tilde{\mathbf y}-\hat{\mathbf b})\).
 
-### 1.6 Lever arm (LP22)
+### 1.6 Lever arm
 
 An IMU at offset \(\mathbf r\) from the rotation centre measures an extra
 

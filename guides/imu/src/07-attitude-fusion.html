@@ -1,0 +1,286 @@
+<!-- title: Guide 7 — Attitude Fusion: Complementary, Kalman and Mahony Filters -->
+<div class="overview">
+<p><strong>Demo:</strong> <code>teaching-sims demo complementary</code><br>
+<strong>Prerequisites:</strong> Guides 4, 5 and 6; Guide 1 for the 3-D part; mean and variance; matrix multiplication<br>
+<strong>Time:</strong> about 2.5 hours of reading, plus the demo walkthrough (Tutorial 11)</p>
+<p>By the end of this guide you should be able to:</p>
+<ul>
+<li>explain low-pass and high-pass filtering, and the meaning of a filter time constant;</li>
+<li>derive the complementary filter, and choose its time constant \(\tau\) and coefficient \(\alpha\) for a given loop rate;</li>
+<li>state the Kalman filter's predict and update equations, and run one step by hand;</li>
+<li>formulate the two-state [angle, gyro bias] Kalman filter, and relate its steady state to a complementary filter;</li>
+<li>explain the Mahony filter's error vector and its gains \(K_p\) and \(K_i\);</li>
+<li>decide which states are observable from a given set of sensors;</li>
+<li>recognise when the "accelerometer measures gravity" assumption fails, and apply gating.</li>
+</ul>
+</div>
+
+<h2>1. Why this matters</h2>
+<p>No single IMU sensor gives a good attitude. The gyro is smooth and responsive but drifts (Guide 5). The accelerometer knows where down is, on average, but is noisy and is fooled by acceleration (Guide 4). The magnetometer knows north, on average, but is fooled by iron (Guide 6). <em>Sensor fusion</em> combines them so that each covers the others' weaknesses. Every drone flight controller, legged robot and phone runs a filter like the ones in this guide, often thousands of times per second.</p>
+<figure><img src="img/g_cf_signals.png" alt="Pitch against time: the gyro-integrated estimate is smooth but drifts away from the truth; the accelerometer tilt is noisy but centred on the truth; the complementary filter follows the truth closely."><figcaption><strong>Figure 1.</strong> The fusion problem in one picture. Gyro integration (smooth, drifting), accelerometer tilt (noisy, unbiased) and the complementary filter that combines them.</figcaption></figure>
+
+<h2>2. Key terms</h2>
+<table>
+<tr><th style="width:26%">Term</th><th>Definition</th></tr>
+<tr><td>Sensor fusion</td><td>Combining measurements from several sensors into one estimate that is better than any of them alone.</td></tr>
+<tr><td>Low-pass filter</td><td>Passes slow (low-frequency) changes and suppresses fast ones. Smooths noise at the cost of lag.</td></tr>
+<tr><td>High-pass filter</td><td>Passes fast changes and suppresses slow ones, including constant offsets and slow drift.</td></tr>
+<tr><td>Time constant \(\tau\)</td><td>For a first-order filter, the time to reach 63 % of a step change. Sets the boundary between "slow" and "fast".</td></tr>
+<tr><td>Crossover frequency \(f_c\)</td><td>\(f_c=1/(2\pi\tau)\): where the low-pass and high-pass paths have equal gain.</td></tr>
+<tr><td>Complementary filter (CF)</td><td>A low-pass on one sensor plus a high-pass on another, whose gains sum to one at every frequency.</td></tr>
+<tr><td>State, state estimate</td><td>The quantities a filter tracks (e.g. angle and gyro bias), and its current best guess of them, \(\hat{\mathbf x}\).</td></tr>
+<tr><td>Covariance \(P\)</td><td>A matrix describing the uncertainty of the estimate: variances on the diagonal, correlations off the diagonal.</td></tr>
+<tr><td>Process noise \(Q\), measurement noise \(R\)</td><td>The assumed covariance of the random disturbances in the model's prediction, and in the measurement.</td></tr>
+<tr><td>Innovation</td><td>The difference between the actual measurement and the one the filter predicted: \(z-H\hat{\mathbf x}^-\).</td></tr>
+<tr><td>Kalman gain \(K\)</td><td>How much of the innovation to add to the estimate. Balances trust in the prediction against trust in the measurement.</td></tr>
+<tr><td>Observability</td><td>Whether a state can be determined from the measurements over time. An unobservable state cannot be corrected, however long the filter runs.</td></tr>
+<tr><td>Gating</td><td>Skipping a measurement update when a consistency test shows the measurement is unreliable.</td></tr>
+</table>
+
+<h2>3. Background: filters as frequency splitters</h2>
+<h3>3.1 A first-order low-pass filter</h3>
+<p>The simplest smoothing filter moves its output \(y\) toward its input \(u\) at a rate proportional to the gap:</p>
+$$\tau\,\dot y = u - y .$$
+<p>For a sudden step in \(u\) from 0 to 1, the output is \(y=1-e^{-t/\tau}\): 63 % of the way after \(\tau\), 95 % after \(3\tau\). Slow inputs pass through; fast wiggles are averaged away.</p>
+<figure><img class="narrow" src="img/g_lowpass_step.png" alt="Step response of a first-order low-pass filter with tau 0.5 seconds, marking 63 percent at 1 tau and 95 percent at 3 tau."><figcaption><strong>Figure 2.</strong> Step response of a first-order low-pass filter.</figcaption></figure>
+<p>In the frequency domain (Laplace variable \(s\), with \(s=j2\pi f\) for sinusoids) this filter is \(\frac{1}{1+s\tau}\): gain 1 at low frequency, falling as \(1/f\) above \(f_c=1/(2\pi\tau)\). Its complement \(1-\frac{1}{1+s\tau}=\frac{s\tau}{1+s\tau}\) is a high-pass filter: gain 0 at DC, 1 at high frequency.</p>
+
+<h3>3.2 Discrete time</h3>
+<p>At sample interval \(\Delta t\), the same low-pass filter is \(y_k=\alpha y_{k-1}+(1-\alpha)u_k\), an exponential moving average. The relation between \(\alpha\) and \(\tau\) is</p>
+$$\tau=\frac{\alpha\,\Delta t}{1-\alpha},\qquad \alpha=\frac{\tau}{\tau+\Delta t}.$$
+<div class="warn"><strong>Important.</strong> \(\alpha\) alone means nothing: the same \(\alpha\) gives a different \(\tau\) at a different loop rate. Design with \(\tau\), then compute \(\alpha\) from your \(\Delta t\).</div>
+
+<h2>4. The complementary filter</h2>
+<h3>4.1 The idea</h3>
+<table>
+<tr><th></th><th>Gyro angle \(\int\omega\,dt\)</th><th>Accelerometer tilt</th></tr>
+<tr><td>Fast motion (high frequency)</td><td>good</td><td>noisy; corrupted by acceleration</td></tr>
+<tr><td>Slow / constant (low frequency)</td><td>drifts with bias</td><td>absolute and unbiased</td></tr>
+</table>
+<p>So: take the gyro's high frequencies and the accelerometer's low frequencies.</p>
+$$\hat\Theta = \underbrace{\frac{s\tau}{1+s\tau}}_{\text{high-pass}}\Theta_{\mathrm{gyro}} + \underbrace{\frac{1}{1+s\tau}}_{\text{low-pass}}\Theta_{\mathrm{acc}} .$$
+<p>The two weights sum to one at every frequency, so if both sensors were perfect the output would equal the truth exactly: the filter introduces no lag or distortion of its own. That is what "complementary" means.</p>
+<figure><img src="img/cf_bode.png" alt="Bode magnitude plot of the low-pass accelerometer path and the high-pass gyro path for three values of alpha, crossing at the crossover frequency."><figcaption><strong>Figure 3.</strong> The accelerometer path (low-pass) and gyro path (high-pass) for three values of \(\alpha\) at 100 Hz. They cross at \(f_c\).</figcaption></figure>
+
+<h3>4.2 The one-line implementation</h3>
+$$\hat\theta_k=\alpha\,(\hat\theta_{k-1}+\omega_k\Delta t)+(1-\alpha)\,\theta^{\mathrm{acc}}_k .$$
+<p>Read it as: <em>predict</em> with the gyro, then <em>nudge</em> a small fraction \(1-\alpha\) of the way toward the accelerometer. Rearranged for small \(\Delta t\), it becomes</p>
+$$\dot{\hat\theta}=\omega+\frac{1}{\tau}\big(\theta^{\mathrm{acc}}-\hat\theta\big):$$
+<p>gyro integration plus a proportional correction with gain \(1/\tau\). Keep this form in mind: the Mahony filter (§6) is its 3-D version.</p>
+
+<h3>4.3 Choosing \(\tau\)</h3>
+<ul>
+<li><strong>Larger \(\tau\)</strong> (trust the gyro): smooth, rejects accelerometer noise and short accelerations, but a gyro bias \(b\) produces a steady error \(b\,\tau\) (see Example 7.3).</li>
+<li><strong>Smaller \(\tau\)</strong> (trust the accelerometer): little drift, but accelerometer noise and acceleration pass through.</li>
+</ul>
+<p>Choose \(\tau\) longer than typical manoeuvres and noise correlation times, but short enough that \(b\,\tau\) is acceptable. Typical values are 0.5–5 s.</p>
+
+<h2>5. The Kalman filter</h2>
+<h3>5.1 The idea: weigh by uncertainty</h3>
+<p>The complementary filter uses a fixed blend. A Kalman filter computes the blend from the uncertainties. It keeps a state estimate \(\hat{\mathbf x}\) and its covariance \(P\), and alternates two steps:</p>
+<ol>
+<li><strong>Predict</strong> with a model (here, gyro integration). Uncertainty grows.</li>
+<li><strong>Update</strong> with a measurement (here, accelerometer tilt). Uncertainty shrinks.</li>
+</ol>
+<p>In one dimension, with Gaussian (normal) uncertainties, the update is a weighted average in which the weights are inverse variances:</p>
+$$K=\frac{\sigma_{\mathrm{pred}}^2}{\sigma_{\mathrm{pred}}^2+\sigma_{\mathrm{meas}}^2},\qquad \hat x=\hat x_{\mathrm{pred}}+K(z-\hat x_{\mathrm{pred}}),\qquad \sigma^2=(1-K)\sigma_{\mathrm{pred}}^2 .$$
+<figure><img src="img/g_kalman_gaussians.png" alt="Three Gaussian curves: a wide prediction centred at 3 degrees, a narrower measurement centred at 6 degrees, and a narrow update centred at 5.08 degrees."><figcaption><strong>Figure 4.</strong> A 1-D Kalman update. The result lies between prediction and measurement, closer to the more certain one, and is more certain than either.</figcaption></figure>
+
+<h3>5.2 The general equations</h3>
+<p>For a linear model \(\mathbf x_k=F\mathbf x_{k-1}+G\mathbf u_k+\mathbf w_k\) and measurement \(\mathbf z_k=H\mathbf x_k+\mathbf v_k\), with \(\mathbf w\sim\mathcal N(0,Q)\) and \(\mathbf v\sim\mathcal N(0,R)\):</p>
+<table>
+<tr><th>Step</th><th>Equations</th></tr>
+<tr><td>Predict</td><td>\(\hat{\mathbf x}^-=F\hat{\mathbf x}+G\mathbf u,\qquad P^-=FPF^\top+Q\)</td></tr>
+<tr><td>Update</td><td>\(K=P^-H^\top(HP^-H^\top+R)^{-1}\)<br>\(\hat{\mathbf x}=\hat{\mathbf x}^-+K(\mathbf z-H\hat{\mathbf x}^-)\)<br>\(P=(I-KH)P^-\)</td></tr>
+</table>
+
+<h3>5.3 The two-state attitude filter</h3>
+<p>Estimate the pitch <em>and</em> the gyro bias, \(\mathbf x=[\theta,\ b]^\top\). The gyro is the input:</p>
+$$\theta_k=\theta_{k-1}+(\tilde\omega_k-b_{k-1})\Delta t,\qquad b_k=b_{k-1}+w_b,$$
+$$F=\begin{bmatrix}1&-\Delta t\\0&1\end{bmatrix},\quad G=\begin{bmatrix}\Delta t\\0\end{bmatrix},\quad H=\begin{bmatrix}1&0\end{bmatrix},\quad z_k=\theta^{\mathrm{acc}}_k .$$
+<ul>
+<li>\(Q\) holds the gyro noise (how much the angle prediction wanders per step) and the bias random walk (how fast the bias may change).</li>
+<li>\(R\) is the variance of the accelerometer tilt.</li>
+<li>The off-diagonal of \(P\) links angle and bias. When the accelerometer says the angle is higher than predicted, the filter infers the gyro under-reported, and lowers the bias estimate. That is how an angle measurement ends up estimating a <em>rate</em> bias.</li>
+</ul>
+<div class="key"><strong>Key idea.</strong> After a while \(P\) and \(K\) settle to constants. The angle update then <em>is</em> a complementary filter, with \(\alpha_{\mathrm{eq}}=1-K_\theta\). The Kalman filter adds two things: an online estimate of the gyro bias (which removes the \(b\tau\) error), and a principled way to tune the blend from sensor noise figures.</div>
+<figure><img src="img/cf_kf_compare.png" alt="Pitch estimates from the complementary filter and the Kalman filter with its 2 sigma band, and the Kalman bias estimate converging to the true bias."><figcaption><strong>Figure 5.</strong> Complementary filter vs Kalman filter on the same data. The Kalman filter's bias estimate converges to the true value, and its ±2σ band shows its confidence.</figcaption></figure>
+<div class="warn"><strong>Caveat.</strong> The Kalman filter is optimal only if its model is right. It assumes the accelerometer error is white noise. A sustained acceleration violates that: the filter treats it as information, and may even learn a wrong bias.</div>
+
+<h2>6. The Mahony filter: attitude fusion in 3-D</h2>
+<p>In three dimensions the attitude is a rotation (Guide 1), so the "angle difference" of the complementary filter becomes a small rotation between two directions. The Mahony filter compares the direction of gravity <em>predicted</em> by the current attitude estimate with the direction <em>measured</em> by the accelerometer (and similarly for the magnetic field), and rotates the estimate to close the gap:</p>
+$$\dot{\hat q}=\tfrac12\,\hat q\otimes\big[0,\ \tilde{\boldsymbol\omega}-\hat{\mathbf b}+K_p\,\mathbf e\big],\qquad \dot{\hat{\mathbf b}}=-K_i\,\mathbf e,$$
+$$\mathbf e=\hat{\mathbf a}\times\hat R^\top\begin{bmatrix}0\\0\\-1\end{bmatrix}+\hat{\mathbf m}\times\hat R^\top\mathbf b_{\mathrm{ref}} .$$
+<ul>
+<li>\(\hat{\mathbf a}\) is the normalised accelerometer reading; \(\hat R^\top[0,0,-1]\) is where the estimate says "up" should be in body axes. Their cross product is perpendicular to both, with magnitude the sine of the angle between them: the axis and amount of rotation needed to align them.</li>
+<li>\(K_p\) plays the role of \(1/\tau\): how fast to pull the estimate toward the measurement.</li>
+<li>\(K_i\) integrates a persistent error into a gyro-bias estimate (integral action, as in a PI controller).</li>
+</ul>
+<p>Mahony runs at kHz on a microcontroller and is the backbone of many drone flight controllers. Madgwick's filter makes the same correction with a gradient-descent step. An extended or error-state Kalman filter (EKF/ESKF) adds covariance and more states. All share the structure: <em>predict with the gyro, correct with vector observations</em>.</p>
+
+<h2>7. Observability</h2>
+<p>A state is observable if the measurements, over time, pin it down. Ask of every state in your filter: <em>does any measurement change when this state changes?</em></p>
+<ul>
+<li>Gravity is unchanged by rotation about the vertical. So an accelerometer corrects roll and pitch (and, through them, the horizontal gyro biases), but <strong>not yaw, and not the vertical gyro bias</strong>.</li>
+<li>Without a heading reference, yaw error grows as \(\int b_z\,dt\) forever, and \(\hat b_z\) never converges.</li>
+<li>Heading references: magnetometer (Guide 6), GNSS course over ground (when moving), visual landmarks, loop closure.</li>
+</ul>
+<figure><img src="img/mahony_observability.png" alt="Mahony filter yaw error and z bias estimate with and without a magnetometer: without it, yaw drifts and the bias estimate does not converge; with it, both converge."><figcaption><strong>Figure 6.</strong> Mahony filter with and without a magnetometer. Without a heading reference, yaw drifts and the vertical bias estimate never converges.</figcaption></figure>
+
+<h2>8. When gravity lies</h2>
+<p>Every accelerometer correction assumes \(\mathbf f\approx-\mathbf g\). During acceleration it is not, and the filter is pulled toward a wrong attitude (Guide 4 §3.3). Remedies, in increasing sophistication:</p>
+<ol>
+<li><strong>Gating:</strong> skip the update when \(\big|\|\mathbf f\|-g\big|&gt;\epsilon\). Cheap, but blind when the tilt and the acceleration happen to leave \(\|\mathbf f\|\approx g\).</li>
+<li><strong>Adaptive \(R\):</strong> inflate the measurement noise when \(\big|\|\mathbf f\|-g\big|\) or the rotation rate is large, so the filter trusts the accelerometer less.</li>
+<li><strong>Model the acceleration:</strong> estimate velocity (an INS with aiding, Guide 8) and subtract the true acceleration before using the accelerometer as a gravity sensor. This is what full navigation filters do.</li>
+</ol>
+<figure><img src="img/surge_gating.png" alt="Pitch error during a surge with and without accelerometer gating; gated samples marked; the gated filter has a smaller error."><figcaption><strong>Figure 7.</strong> A 4 s surge drags the ungated filter's pitch; gating rejects most surge samples (red marks) and limits the error.</figcaption></figure>
+
+<h2>9. Worked examples</h2>
+
+<div class="example">
+<h4>Example 7.1 — From \(\alpha\) to \(\tau\), and back</h4>
+<p><strong>Problem.</strong> Code uses \(\alpha=0.98\) in a 100 Hz loop. Find \(\tau\) and \(f_c\). The same code is moved, unchanged, to a 400 Hz loop: what are \(\tau\) and \(f_c\) now? What \(\alpha\) keeps \(\tau=0.5\) s at 400 Hz?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>100 Hz: \(\tau=0.98\times0.01/0.02=0.49\) s; \(f_c=1/(2\pi\times0.49)=0.325\) Hz.</li>
+<li>400 Hz: \(\tau=0.98\times0.0025/0.02=0.1225\) s; \(f_c=1.30\) Hz. The filter now trusts the accelerometer four times more.</li>
+<li>\(\alpha=\tau/(\tau+\Delta t)=0.5/0.5025=0.99502\).</li>
+</ol>
+</div>
+
+<div class="example">
+<h4>Example 7.2 — One complementary-filter step</h4>
+<p><strong>Problem.</strong> \(\hat\theta_{k-1}=10.0^\circ\), gyro \(\omega_k=5\) °/s, \(\Delta t=0.01\) s, accelerometer tilt \(\theta^{\mathrm{acc}}_k=11.0^\circ\), \(\alpha=0.98\). Find \(\hat\theta_k\).</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Gyro prediction: \(10.0+5\times0.01=10.05^\circ\).</li>
+<li>Blend: \(0.98\times10.05+0.02\times11.0=9.849+0.220=10.069^\circ\).</li>
+</ol>
+<p><strong>Interpretation.</strong> The accelerometer nudges the estimate by only 0.019°, 2 % of the 0.95° gap. Over many steps these nudges remove drift without letting single noisy samples through.</p>
+</div>
+
+<div class="example">
+<h4>Example 7.3 — The complementary filter's bias error</h4>
+<p><strong>Problem.</strong> The gyro has a bias \(b=0.8\) °/s and \(\tau=0.49\) s. The robot is stationary and level. Where does the complementary filter settle?</p>
+<p><strong>Solution.</strong> With error \(e=\hat\theta-\theta\), the continuous form gives \(\dot e=b-e/\tau\). At steady state \(\dot e=0\), so \(e=b\,\tau=0.8\times0.49=0.39^\circ\).</p>
+<p><strong>Interpretation.</strong> The demo confirms 0.392°. A complementary filter never fully removes a gyro bias: the error is proportional to \(\tau\). The Kalman filter (or Mahony's \(K_i\) term) estimates \(b\) and drives this error to zero.</p>
+</div>
+
+<div class="example">
+<h4>Example 7.4 — A 1-D Kalman update</h4>
+<p><strong>Problem.</strong> The gyro-based prediction of pitch is \(3^\circ\pm1.5^\circ\) (1σ). The accelerometer measures \(6^\circ\pm1^\circ\). Fuse them.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(K=1.5^2/(1.5^2+1^2)=2.25/3.25=0.692\).</li>
+<li>\(\hat\theta=3+0.692\times(6-3)=5.08^\circ\).</li>
+<li>\(\sigma^2=(1-0.692)\times2.25=0.692\), so \(\sigma=0.83^\circ\).</li>
+</ol>
+<p><strong>Interpretation.</strong> The result is closer to the more certain measurement, and more certain (0.83°) than either input. This is Figure 4.</p>
+</div>
+
+<div class="example">
+<h4>Example 7.5 — One step of the two-state filter</h4>
+<p><strong>Problem.</strong> \(\Delta t=0.01\) s. Initial estimate \(\hat{\mathbf x}=[0^\circ,\ 0\ ^\circ/\text s]\), \(P=\operatorname{diag}(4,\ 1)\) (units deg², (deg/s)²), \(R=4\) deg² (2° accelerometer noise). Ignore \(Q\) for simplicity. The gyro reads 5 °/s and the accelerometer 1.0°. Run one predict and one update.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Predict state: \(\theta^-=0+(5-0)(0.01)=0.05^\circ\); \(b^-=0\).</li>
+<li>Predict covariance: \(P^-=FPF^\top=\begin{bmatrix}4.0001&-0.01\\-0.01&1\end{bmatrix}\). The \(-0.01\) is new: a larger bias would mean a smaller angle, so the two errors are now negatively correlated.</li>
+<li>Gain: \(K=P^-H^\top/(P^-_{11}+R)=[4.0001,\ -0.01]^\top/8.0001=[0.500,\ -0.00125]^\top\).</li>
+<li>Innovation: \(z-\theta^-=1.0-0.05=0.95^\circ\).</li>
+<li>Update: \(\theta=0.05+0.500\times0.95=0.525^\circ\); \(b=0-0.00125\times0.95=-0.0012\) °/s.</li>
+<li>Covariance: \(P=(I-KH)P^-\approx\begin{bmatrix}2.00&-0.005\\-0.005&1.00\end{bmatrix}\), so \(\sigma_\theta\) fell from 2° to 1.41°.</li>
+</ol>
+<p><strong>Interpretation.</strong> The angle moved halfway to the measurement because the two were equally uncertain. The bias moved only slightly, but in a sensible direction: the angle came out higher than the gyro predicted, so the gyro is probably reading low, and the bias estimate goes negative. Over hundreds of steps these small corrections converge on the true bias.</p>
+</div>
+
+<div class="example">
+<h4>Example 7.6 — The Mahony error vector</h4>
+<p><strong>Problem.</strong> The filter believes the robot is level, but it is actually rolled 5° right. Compute \(\mathbf e\) (accelerometer term only) and the initial correction rate with \(K_p=1\ \text s^{-1}\).</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Measured, normalised (FRD): \(\hat{\mathbf a}=[0,\ -\sin5^\circ,\ -\cos5^\circ]=[0,\ -0.0872,\ -0.9962]\).</li>
+<li>Predicted "up" for a level estimate: \(\hat R^\top[0,0,-1]^\top=[0,0,-1]\).</li>
+<li>\(\mathbf e=\hat{\mathbf a}\times[0,0,-1]=[(-0.0872)(-1)-(-0.9962)(0),\ 0,\ 0]=[0.0872,\ 0,\ 0]\).</li>
+<li>Correction \(K_p\mathbf e=0.0872\) rad/s \(=5.0\) °/s about body +x, which increases the estimated roll toward the true 5°.</li>
+</ol>
+<p><strong>Interpretation.</strong> \(\|\mathbf e\|=\sin5^\circ\): the cross product measures the misalignment angle and its axis. With \(K_p=1\ \text s^{-1}\), the error decays with a time constant of about 1 s, like a complementary filter with \(\tau=1/K_p\).</p>
+</div>
+
+<div class="example">
+<h4>Example 7.7 — Designing \(\tau\) for a surge</h4>
+<p><strong>Problem.</strong> A robot accelerates at 2 m/s² for 4 s. Its gyro bias is 0.8 °/s. Compare \(\tau=0.49\) s and \(\tau=5\) s.</p>
+<p><strong>Solution.</strong> The accelerometer tilt error during the surge is \(\arctan(2/9.81)=11.5^\circ\). A complementary filter follows it as \(11.5(1-e^{-t/\tau})\):</p>
+<ul>
+<li>\(\tau=0.49\) s: after 4 s, 11.5° (it follows the false tilt almost completely). Bias error \(b\tau=0.39^\circ\).</li>
+<li>\(\tau=5\) s: after 4 s, 6.3°. But the steady bias error is \(0.8\times5=4.0^\circ\).</li>
+</ul>
+<p><strong>Interpretation.</strong> No single \(\tau\) wins: a longer \(\tau\) resists acceleration but amplifies bias error. The Kalman filter's bias state removes the bias error; gating (demo: about 40 % of samples rejected) or an acceleration model removes the surge error.</p>
+</div>
+
+<h2>10. Common mistakes</h2>
+<ul>
+<li>Copying \(\alpha\) between systems with different loop rates.</li>
+<li>Tuning a Kalman filter's \(Q\) and \(R\) by trial and error without relating them to the sensor datasheet (Guide 5).</li>
+<li>Expecting a filter to estimate a state that no measurement can see (yaw, vertical gyro bias without a heading reference).</li>
+<li>Using the accelerometer as a gravity sensor during sustained acceleration, braking or turns.</li>
+<li>Integrating Euler angles in 3-D instead of a quaternion (Guide 1).</li>
+</ul>
+
+<h2>11. Using the demo</h2>
+<div class="demo">
+<p>Run <code>teaching-sims demo complementary</code>:</p>
+<table>
+<tr><th>Scenario</th><th>Concept</th><th>What to look for</th></tr>
+<tr><td>Balanced sine / Trust the gyro / Trust the accel / Step pitch</td><td>§4</td><td>τ, \(f_c\) and the Bode plot; drift vs noise as τ changes.</td></tr>
+<tr><td>Kalman filter estimates the bias</td><td>§5</td><td>The bias estimate converges to 1 °/s; the ±2σ band shrinks; τ_eq ≈ 2.4 s.</td></tr>
+<tr><td>Kalman tuning: Q vs R</td><td>§5.3</td><td>Sweep R: α_eq and the noise–drift trade.</td></tr>
+<tr><td>Surge spoofs the accel / Gate the accel</td><td>§8, Ex. 7.7</td><td>The surge reads as nose-up; gating rejects most surge samples.</td></tr>
+<tr><td>3-D Mahony without / with magnetometer</td><td>§6–7</td><td>Yaw drifts and \(\hat b_z\) never converges without the magnetometer.</td></tr>
+</table>
+<p>See Tutorial 11 for the walkthrough and lab sheet.</p>
+</div>
+
+<h2>12. Practice problems</h2>
+<ol>
+<li>You want \(\tau=2\) s in a 250 Hz loop. What \(\alpha\)?</li>
+<li>Which frequency band does each sensor contribute in a complementary filter, and why that way round?</li>
+<li>A 1-D prediction is \(10^\circ\pm2^\circ\) and a measurement \(12^\circ\pm2^\circ\). What is the fused estimate and its standard deviation?</li>
+<li>In the two-state filter, what happens to the bias estimate if \(Q\) for the bias is set to zero? If it is set very large?</li>
+<li>A quadrotor has an accelerometer and gyro but no magnetometer. Which of roll, pitch, yaw, \(b_x\), \(b_y\), \(b_z\) can its filter estimate while hovering?</li>
+<li>A car brakes at 5 m/s² for 3 s. Sketch the complementary-filter pitch error with \(\tau=1\) s, with and without gating.</li>
+<li>In the Mahony filter, what is the effect of setting \(K_i=0\)? Of setting \(K_p=0\)?</li>
+</ol>
+
+<h2>13. Summary of key equations</h2>
+<table>
+<tr><th>Quantity</th><th>Equation</th></tr>
+<tr><td>Complementary filter</td><td>\(\hat\theta_k=\alpha(\hat\theta_{k-1}+\omega_k\Delta t)+(1-\alpha)\theta^{\mathrm{acc}}_k\)</td></tr>
+<tr><td>Time constant and crossover</td><td>\(\tau=\alpha\Delta t/(1-\alpha),\quad \alpha=\tau/(\tau+\Delta t),\quad f_c=1/(2\pi\tau)\)</td></tr>
+<tr><td>CF bias error</td><td>\(e_{ss}=b\,\tau\)</td></tr>
+<tr><td>Kalman predict</td><td>\(\hat{\mathbf x}^-=F\hat{\mathbf x}+G\mathbf u,\quad P^-=FPF^\top+Q\)</td></tr>
+<tr><td>Kalman update</td><td>\(K=P^-H^\top(HP^-H^\top+R)^{-1},\ \hat{\mathbf x}=\hat{\mathbf x}^-+K(\mathbf z-H\hat{\mathbf x}^-),\ P=(I-KH)P^-\)</td></tr>
+<tr><td>KF ↔ CF</td><td>\(\alpha_{\mathrm{eq}}=1-K_\theta\) (steady state)</td></tr>
+<tr><td>Mahony</td><td>\(\dot{\hat q}=\frac12\hat q\otimes[0,\tilde{\boldsymbol\omega}-\hat{\mathbf b}+K_p\mathbf e],\ \dot{\hat{\mathbf b}}=-K_i\mathbf e,\ \mathbf e=\hat{\mathbf a}\times\hat R^\top[0,0,-1]^\top+\dots\)</td></tr>
+<tr><td>Gating</td><td>skip if \(|\|\mathbf f\|-g|&gt;\epsilon\)</td></tr>
+</table>
+
+<h2>14. Answers to practice problems</h2>
+<ol>
+<li class="answer">\(\Delta t=0.004\) s: \(\alpha=2/2.004=0.998\).</li>
+<li class="answer">Gyro: high frequencies (it is precise over short intervals but its integral drifts slowly). Accelerometer: low frequencies (unbiased on average, but noisy and disturbed instant to instant). The other way round would keep each sensor's worst feature.</li>
+<li class="answer">Equal variances: \(K=0.5\), estimate \(11^\circ\), \(\sigma=\sqrt{0.5\times4}=1.41^\circ\).</li>
+<li class="answer">\(Q_b=0\): the filter becomes certain of the bias over time and stops updating it, so it cannot follow bias instability. Very large \(Q_b\): the bias estimate chases every accelerometer disturbance and becomes noisy.</li>
+<li class="answer">Roll, pitch, \(b_x\), \(b_y\): yes (while hovering level). Yaw and \(b_z\): no, because gravity is invariant to rotation about the vertical.</li>
+<li class="answer">The accelerometer reads \(\arctan(5/9.81)=27^\circ\) nose-<em>down</em> during braking. Without gating the error follows \(27(1-e^{-t/1})\), reaching about 26° at 3 s, then decays with \(\tau=1\) s afterwards. With gating most samples are rejected and the error stays small, limited by gyro drift over 3 s.</li>
+<li class="answer">\(K_i=0\): no bias estimation, so a steady error \(b/K_p\) remains (like \(b\tau\) in the CF). \(K_p=0\): no correction at all; pure gyro integration, which drifts.</li>
+</ol>
+
+<h2>15. Further reading</h2>
+<ul>
+<li>R. Mahony, T. Hamel and J.-M. Pflimlin, "Nonlinear complementary filters on the special orthogonal group", <em>IEEE Trans. Automatic Control</em>, 53(5), 2008.</li>
+<li>S. Madgwick, A. Harrison and R. Vaidyanathan, "Estimation of IMU and MARG orientation using a gradient descent algorithm", <em>ICORR</em> 2011.</li>
+<li>G. Welch and G. Bishop, "An Introduction to the Kalman Filter", UNC-Chapel Hill TR 95-041. Short and classic.</li>
+<li>R. Labbe, <em>Kalman and Bayesian Filters in Python</em> (free online book with interactive notebooks).</li>
+<li>J. Solà, <em>Quaternion kinematics for the error-state Kalman filter</em>, arXiv:1711.02508.</li>
+</ul>

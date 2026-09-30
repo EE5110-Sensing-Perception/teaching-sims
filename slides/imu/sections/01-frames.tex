@@ -1,7 +1,7 @@
-% Section A: frames and rotations (LP1-LP5).
+% Section A: frames and rotations.
 \section{Frames and rotations}
 
-\begin{frame}{Three frames every robot needs \hfill \lp{1}}
+\begin{frame}{Three frames every robot needs}
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
       \begin{itemize}
@@ -21,7 +21,7 @@
   \end{columns}
 \end{frame}
 
-\begin{frame}{Two conventions: aerospace vs ROS \hfill \lp{1}}
+\begin{frame}{Two conventions: aerospace vs ROS}
   \begin{columns}[T]
     \begin{column}{0.44\textwidth}
       \centering
@@ -66,10 +66,10 @@
   \begin{alertblock}{A common bug}
     \small ROS yaw is measured from \emph{East}, counter-clockwise: $\psi_{\mathrm{ROS}} = 90^\circ-\psi_{\mathrm{NED}}$. Nose-up pitch is \emph{negative}.
   \end{alertblock}
-  \tryit{attitude}{ned\_vs\_ros}
+  \examplebar{attitude}{ned\_vs\_ros}
 \end{frame}
 
-\begin{frame}{Representing attitude \hfill \lp{2}}
+\begin{frame}{Representing attitude}
   \footnotesize
   \begin{tabular}{@{}llll@{}}
     \toprule
@@ -99,10 +99,10 @@
       \]
     \end{column}
   \end{columns}
-  \tryit{attitude}{level\_heading, pitch\_nose\_up, quat\_double\_cover}
+  \examplebar{attitude}{level\_heading, pitch\_nose\_up, quat\_double\_cover}
 \end{frame}
 
-\begin{frame}{Composition order: rotations do not commute \hfill \lp{3}}
+\begin{frame}{Composition order: rotations do not commute}
   \begin{columns}[T]
     \begin{column}{0.36\textwidth}
       \small
@@ -118,10 +118,10 @@
       \includegraphics[width=\linewidth]{rotation_order.pdf}
     \end{column}
   \end{columns}
-  \tryit{attitude}{sequence\_intrinsic, intrinsic\_vs\_extrinsic, order\_matters}
+  \examplebar{attitude}{sequence\_intrinsic, intrinsic\_vs\_extrinsic, order\_matters}
 \end{frame}
 
-\begin{frame}{Gimbal lock is a coordinate problem \hfill \lp{4}}
+\begin{frame}{Gimbal lock is a coordinate problem}
   \begin{columns}[T]
     \begin{column}{0.4\textwidth}
       \small
@@ -145,10 +145,10 @@
       \includegraphics[width=\linewidth]{gimbal_sensitivity.pdf}
     \end{column}
   \end{columns}
-  \tryit{attitude}{gimbal\_lock\_scan}
+  \examplebar{attitude}{gimbal\_lock\_scan}
 \end{frame}
 
-\begin{frame}{Attitude kinematics \hfill \lp{5}}
+\begin{frame}{Attitude kinematics}
   \begin{columns}[T]
     \begin{column}{0.42\textwidth}
       \small
@@ -170,10 +170,10 @@
       \includegraphics[width=\linewidth]{rate_integration.pdf}
     \end{column}
   \end{columns}
-  \tryit{attitude}{dcm\_drift, dcm\_renormalized}
+  \examplebar{attitude}{dcm\_drift, dcm\_renormalized}
 \end{frame}
 
-\begin{frame}{Coning: why IMUs integrate internally at kHz \hfill \lp{5}}
+\begin{frame}{Coning: why IMUs integrate internally at kHz}
   \begin{columns}[T]
     \begin{column}{0.45\textwidth}
       \small
@@ -188,7 +188,7 @@
       \includegraphics[width=\linewidth]{coning_dt.pdf}
     \end{column}
   \end{columns}
-  \tryit{attitude}{coning}
+  \examplebar{attitude}{coning}
 \end{frame}
 
 \begin{frame}{\checkq{} --- frames and rotations}

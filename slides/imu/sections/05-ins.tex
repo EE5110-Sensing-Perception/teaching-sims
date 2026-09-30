@@ -1,7 +1,7 @@
-% Section E: inertial navigation (LP18-LP20).
+% Section E: inertial navigation.
 \section{Inertial navigation}
 
-\begin{frame}{Strapdown mechanisation \hfill \lp{18}}
+\begin{frame}{Strapdown mechanisation}
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
       \centering
@@ -32,10 +32,10 @@
       \end{itemize}
     \end{column}
   \end{columns}
-  \tryit{ins}{perfect\_circle, tilt\_leaks\_gravity}
+  \examplebar{ins}{perfect\_circle, tilt\_leaks\_gravity}
 \end{frame}
 
-\begin{frame}{Unaided error growth: $t$, $t^2$, $t^3$ \hfill \lp{19}}
+\begin{frame}{Unaided error growth: $t$, $t^2$, $t^3$}
   \begin{columns}[T]
     \begin{column}{0.56\textwidth}
       \includegraphics[width=\linewidth]{ins_error_budget.pdf}
@@ -58,10 +58,10 @@
       \footnotesize Over hours, Schuler feedback bounds the tilt terms into an 84-minute oscillation. That doesn't matter at robotics time scales.
     \end{column}
   \end{columns}
-  \tryit{ins}{accel\_bias\_straight, pitch\_gyro\_cubic, gyro\_bias\_circle, error\_budget}
+  \examplebar{ins}{accel\_bias\_straight, pitch\_gyro\_cubic, gyro\_bias\_circle, error\_budget}
 \end{frame}
 
-\begin{frame}{Aiding bounds the error \hfill \lp{20}}
+\begin{frame}{Aiding bounds the error}
   \begin{columns}[T]
     \begin{column}{0.58\textwidth}
       \includegraphics[width=\linewidth]{ins_aiding.pdf}
@@ -76,10 +76,10 @@
       \end{itemize}
     \end{column}
   \end{columns}
-  \tryit{ins}{stop\_and\_go, zupt, zupt\_false\_detection, position\_fixes}
+  \examplebar{ins}{stop\_and\_go, zupt, zupt\_false\_detection, position\_fixes}
 \end{frame}
 
-\begin{frame}{How long can your robot coast? \hfill \lp{21}}
+\begin{frame}{How long can your robot coast?}
   \begin{columns}[T]
     \begin{column}{0.52\textwidth}
       \includegraphics[width=\linewidth]{ins_grades.pdf}
@@ -93,7 +93,7 @@
       \end{itemize}
     \end{column}
   \end{columns}
-  \tryit{ins}{grade\_consumer (switch the IMU grade)}
+  \examplebar{ins}{grade\_consumer (switch the IMU grade)}
 \end{frame}
 
 \begin{frame}{\checkq{} --- inertial navigation}

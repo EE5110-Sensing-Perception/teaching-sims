@@ -1,7 +1,7 @@
-% Section B: sensors (LP6-LP9).
+% Section B: sensors.
 \section{Inertial sensors}
 
-\begin{frame}{MEMS accelerometer: a proof mass on springs \hfill \lp{6}}
+\begin{frame}{MEMS accelerometer: a proof mass on springs}
   \begin{columns}[T]
     \begin{column}{0.46\textwidth}
       \centering
@@ -35,10 +35,10 @@
       \end{itemize}
     \end{column}
   \end{columns}
-  \tryit{mems-accel}{at\_rest, constant\_accel, output\_bias, mech\_offset\_bias}
+  \examplebar{mems-accel}{at\_rest, constant\_accel, output\_bias, mech\_offset\_bias}
 \end{frame}
 
-\begin{frame}{Sensitivity, bandwidth and noise: pick two \hfill \lp{6}}
+\begin{frame}{Sensitivity, bandwidth and noise: pick two}
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
       \includegraphics[width=\linewidth]{mems_accel_response.pdf}
@@ -53,10 +53,10 @@
       \end{itemize}
     \end{column}
   \end{columns}
-  \tryit{mems-accel}{soft\_vs\_stiff, vibration\_above\_bw, impulse\_ring, overdamped\_impulse}
+  \examplebar{mems-accel}{soft\_vs\_stiff, vibration\_above\_bw, impulse\_ring, overdamped\_impulse}
 \end{frame}
 
-\begin{frame}{Accelerometers measure specific force \hfill \lp{7}}
+\begin{frame}{Accelerometers measure specific force}
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
       \small
@@ -75,10 +75,10 @@
       \small A static accelerometer cannot tell a tilt $\delta\theta$ from a bias $b_x$, a forward acceleration $a_x$, or a lever-arm term. Each looks like $\approx g\,\delta\theta$.
     \end{column}
   \end{columns}
-  \tryit{accelerometer}{level\_plate, static\_tilt, bias\_tilts\_estimate, surge\_contaminates}
+  \examplebar{accelerometer}{level\_plate, static\_tilt, bias\_tilts\_estimate, surge\_contaminates}
 \end{frame}
 
-\begin{frame}{Vibration and averaging \hfill \lp{7}}
+\begin{frame}{Vibration and averaging}
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
       \includegraphics[width=\linewidth]{accel_vibration_average.pdf}
@@ -93,10 +93,10 @@
       \end{itemize}
     \end{column}
   \end{columns}
-  \tryit{accelerometer}{vibration\_average, large\_pitch}
+  \examplebar{accelerometer}{vibration\_average, large\_pitch}
 \end{frame}
 
-\begin{frame}{Coriolis vibratory gyroscope \hfill \lp{8}}
+\begin{frame}{Coriolis vibratory gyroscope}
   \begin{columns}[T]
     \begin{column}{0.44\textwidth}
       \centering
@@ -122,10 +122,10 @@
       \end{itemize}
     \end{column}
   \end{columns}
-  \tryit{mems-gyro}{no\_rotation, coriolis\_step, quadrature\_rejected}
+  \examplebar{mems-gyro}{no\_rotation, coriolis\_step, quadrature\_rejected}
 \end{frame}
 
-\begin{frame}{Where gyro bias comes from: quadrature leakage \hfill \lp{8}}
+\begin{frame}{Where gyro bias comes from: quadrature leakage}
   \begin{columns}[T]
     \begin{column}{0.48\textwidth}
       \includegraphics[width=\linewidth]{mems_gyro_quadrature.pdf}
@@ -141,10 +141,10 @@
       \end{itemize}
     \end{column}
   \end{columns}
-  \tryit{mems-gyro}{quadrature\_bias}
+  \examplebar{mems-gyro}{quadrature\_bias}
 \end{frame}
 
-\begin{frame}{Mode matching: sensitivity vs bandwidth \hfill \lp{8}}
+\begin{frame}{Mode matching: sensitivity vs bandwidth}
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
       \includegraphics[width=\linewidth]{mems_gyro_modes.pdf}
@@ -158,10 +158,10 @@
       \end{itemize}
     \end{column}
   \end{columns}
-  \tryit{mems-gyro}{mode\_matched, mode\_split, sine\_rate\_bandwidth}
+  \examplebar{mems-gyro}{mode\_matched, mode\_split, sine\_rate\_bandwidth}
 \end{frame}
 
-\begin{frame}{Magnetometer heading \hfill \lp{9}}
+\begin{frame}{Magnetometer heading}
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
       \small
@@ -178,10 +178,10 @@
       \includegraphics[width=\linewidth]{mag_tilt_error.pdf}
     \end{column}
   \end{columns}
-  \tryit{magnetometer}{pitched\_needs\_tc, dip\_side\_view, declination}
+  \examplebar{magnetometer}{pitched\_needs\_tc, dip\_side\_view, declination}
 \end{frame}
 
-\begin{frame}{Magnetic disturbances: detect and gate \hfill \lp{9}}
+\begin{frame}{Magnetic disturbances: detect and gate}
   \begin{columns}[T]
     \begin{column}{0.55\textwidth}
       \small
@@ -200,5 +200,5 @@
       \end{alertblock}
     \end{column}
   \end{columns}
-  \tryit{magnetometer}{steel\_disturbance}
+  \examplebar{magnetometer}{steel\_disturbance}
 \end{frame}

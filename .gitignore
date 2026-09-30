@@ -12,3 +12,6 @@ build/
 fonts/
 slides/build/
 slides/figures/imu/
+guides/imu/img/
+guides/imu/canvas/
+guides/imu/preview/

@@ -1,0 +1,229 @@
+<!-- title: Guide 4 — Accelerometers: Specific Force, Tilt, Errors and Calibration -->
+<div class="overview">
+<p><strong>Demo:</strong> <code>teaching-sims demo accelerometer</code><br>
+<strong>Prerequisites:</strong> Guide 1 (frames, rotation matrices); Guide 2 helpful; basic statistics (mean, standard deviation); linear least squares<br>
+<strong>Time:</strong> about 2 hours of reading, plus the demo walkthrough (Tutorial 08)</p>
+<p>By the end of this guide you should be able to:</p>
+<ul>
+<li>state precisely what an accelerometer measures (specific force), and predict its reading at rest, in free fall and when accelerating;</li>
+<li>derive roll and pitch from a static reading, and explain why yaw cannot be recovered;</li>
+<li>explain why bias, sustained acceleration and lever-arm effects all masquerade as tilt, while vibration averages out;</li>
+<li>write the deterministic error model (bias, scale factor, misalignment), and estimate it with a six-position calibration;</li>
+<li>compute and compensate the lever-arm acceleration of an IMU mounted away from the rotation centre.</li>
+</ul>
+</div>
+
+<h2>1. Why this matters</h2>
+<p>The accelerometer is the IMU's "which way is down" sensor. Every attitude filter uses it to correct gyro drift in roll and pitch, and every inertial navigator integrates it for velocity and position. Both uses depend on understanding exactly what it measures, because the quantity is not what the name suggests: a stationary accelerometer does <em>not</em> read zero, and a falling one does.</p>
+
+<h2>2. Key terms</h2>
+<table>
+<tr><th style="width:26%">Term</th><th>Definition</th></tr>
+<tr><td>Specific force \(\mathbf f\)</td><td>Non-gravitational force per unit mass acting on the sensor: \(\mathbf f=\mathbf a-\mathbf g\). This is what an accelerometer measures. Units m/s² (or g).</td></tr>
+<tr><td>Gravity vector \(\mathbf g\)</td><td>The gravitational acceleration, pointing down. In NED, \(\mathbf g^n=[0,0,+g]\), with \(g\approx9.81\) m/s².</td></tr>
+<tr><td>Kinematic acceleration \(\mathbf a\)</td><td>The second derivative of position relative to an inertial frame; what you would get by differentiating GPS position twice.</td></tr>
+<tr><td>Quasi-static</td><td>Moving slowly enough that \(\mathbf a\approx\mathbf 0\), so \(\mathbf f\approx-\mathbf g\).</td></tr>
+<tr><td>Tilt</td><td>Roll and pitch together: the orientation of the body relative to the horizontal.</td></tr>
+<tr><td>Observable</td><td>A quantity that can be determined from the available measurements. Yaw is not observable from gravity.</td></tr>
+<tr><td>Bias \(\mathbf b\)</td><td>A constant (or slowly varying) offset added to the output.</td></tr>
+<tr><td>Scale-factor error \(s\)</td><td>A fractional gain error: the output is \((1+s)\) times the input. Quoted in % or ppm (parts per million).</td></tr>
+<tr><td>Misalignment / non-orthogonality</td><td>Sensor axes that are not exactly aligned with, or perpendicular to, the body axes, so each axis picks up a little of the others. Quoted in mrad.</td></tr>
+<tr><td>Least squares</td><td>Choosing the parameters that minimise the sum of squared differences between model and data.</td></tr>
+<tr><td>Lever arm \(\mathbf r\)</td><td>The position of the IMU relative to the point whose motion you care about (often the centre of rotation).</td></tr>
+<tr><td>Centripetal acceleration</td><td>The acceleration \(\omega^2r\), directed toward the axis, of a point moving in a circle of radius \(r\) at rate \(\omega\).</td></tr>
+</table>
+
+<h2>3. What an accelerometer measures</h2>
+<h3>3.1 Gravity cannot be felt</h3>
+<p>The proof mass of Guide 2 and the case around it are both pulled by gravity with the same acceleration. So gravity alone produces no relative motion: a sensor in free fall reads zero, just as an astronaut in orbit feels weightless. What the sensor <em>does</em> respond to are the forces that act on the case but not directly on the mass: the table pushing up, the motor pushing forward, air drag. Their sum per unit mass is the <strong>specific force</strong>:</p>
+$$\mathbf f = \mathbf a - \mathbf g,\qquad \mathbf f^b = R^b_n\,(\mathbf a^n-\mathbf g^n).$$
+<figure><img src="img/g_specific_force_cases.png" alt="Three vector diagrams. At rest: gravity down, specific force up with magnitude g. Free fall: acceleration equals gravity, specific force zero. Car accelerating forward at half g: specific force points up and forward."><figcaption><strong>Figure 1.</strong> Specific force in three situations. At rest the table's support makes the sensor read 1 g <em>upward</em>. In free fall it reads zero. Accelerating forward, the reading tilts forward.</figcaption></figure>
+<div class="key"><strong>Key idea.</strong> At rest and level in NED/FRD, an accelerometer reads \(\mathbf f^b=[0,\,0,\,-g]\): minus 9.81 on the z axis, because z points down and the reaction force points up. In ROS FLU the same sensor reads \([0,0,+g]\). If your level IMU reads \(+9.81\) on an axis you think points down, you have a sign or frame error.</div>
+
+<h3>3.2 Tilt from gravity</h3>
+<p>If the platform is quasi-static, \(\mathbf f^b\approx-R^b_n\mathbf g^n\): the accelerometer measures the direction of "up" in body axes. Substituting the ZYX rotation from Guide 1 (§5.2) with \(\mathbf g^n=[0,0,g]\):</p>
+$$\mathbf f^b = -g\begin{bmatrix}-\sin\theta\\ \sin\phi\cos\theta\\ \cos\phi\cos\theta\end{bmatrix} = \begin{bmatrix}g\sin\theta\\ -g\sin\phi\cos\theta\\ -g\cos\phi\cos\theta\end{bmatrix}.$$
+<p>Solving for the angles:</p>
+$$\phi=\operatorname{atan2}(-f_y,\,-f_z),\qquad \theta=\operatorname{atan2}\!\Big(f_x,\ \sqrt{f_y^2+f_z^2}\Big).$$
+<figure><img class="narrow" src="img/g_tilt_geometry.png" alt="Side view of a body pitched nose-up by theta. The upward specific force resolves into a component along body x of g sin theta and a component along minus body z of g cos theta."><figcaption><strong>Figure 2.</strong> Pitching nose-up by \(\theta\) tips part of the upward specific force onto the body x axis: \(f_x=+g\sin\theta\).</figcaption></figure>
+<p><strong>Yaw is unobservable.</strong> Yaw \(\psi\) does not appear in \(\mathbf f^b\) at all. Rotating about the vertical leaves the direction of gravity unchanged, so no accelerometer reading can reveal it. Heading needs another reference: a magnetometer (Guide 6), GNSS, or vision.</p>
+
+<h3>3.3 Things that look like tilt</h3>
+<p>The tilt formulas assume the only specific force is the reaction to gravity. Anything else along x is interpreted as pitch. An extra \(d\) along x produces a pitch error of \(\arctan(d/g)\approx d/g\) radians:</p>
+<table>
+<tr><th>Source</th><th>Extra specific force</th><th>Apparent pitch error</th></tr>
+<tr><td>Consumer bias, 10 mg</td><td>0.1 m/s²</td><td>0.58°</td></tr>
+<tr><td>Car accelerating</td><td>1 m/s²</td><td>5.8° nose-up</td></tr>
+<tr><td>IMU 0.5 m from the spin axis at 120 °/s</td><td>2.19 m/s² toward the axis</td><td>12.6°</td></tr>
+</table>
+<figure><img src="img/accel_disturbance_tilt.png" alt="Pitch error against extra x specific force; an arctangent curve with markers for a consumer bias and a car accelerating."><figcaption><strong>Figure 3.</strong> One curve covers every disturbance: a static accelerometer cannot tell a bias, a surge or a lever-arm term from a real tilt.</figcaption></figure>
+<p>A forward acceleration reads as nose-<em>up</em>. Pilots experience the same illusion (the somatogravic illusion): the inner ear is an accelerometer too.</p>
+
+<h3>3.4 Noise and vibration average out; bias does not</h3>
+<p>Zero-mean disturbances, such as white noise and vibration, shrink when averaged. For \(N\) independent samples with standard deviation \(\sigma\), the mean has standard deviation</p>
+$$\sigma_{\bar x}=\frac{\sigma}{\sqrt N}.$$
+<p>Averaging 100 samples reduces the noise 10×. A bias, a sustained acceleration or a steady lever-arm term is the same in every sample, so averaging does nothing to it.</p>
+<figure><img src="img/accel_vibration_average.png" alt="Instantaneous pitch estimate jittering by about 10 degrees under vibration, and a 1 second moving average lying on the true pitch."><figcaption><strong>Figure 4.</strong> Under vibration, the instantaneous tilt estimate jitters by ±10°, while a 1 s moving average sits on the truth. The price is lag.</figcaption></figure>
+<p>This is why gravity is a good <em>low-frequency</em> reference for tilt: correct on average, unreliable instant by instant. Guide 7 builds the complementary filter on exactly this idea.</p>
+
+<h2>4. Deterministic error model</h2>
+<p>A real triad of accelerometers reports</p>
+$$\tilde{\mathbf f} = (I+S)\,M\,\mathbf f + \mathbf b + \mathbf n,$$
+<ul>
+<li>\(\mathbf b\), <strong>bias</strong>: a turn-on part that differs every power cycle, plus an in-run part that drifts (Guide 5 models it).</li>
+<li>\(S=\operatorname{diag}(s_x,s_y,s_z)\), <strong>scale-factor errors</strong>: the gain of each axis is slightly wrong.</li>
+<li>\(M\approx I+\) small off-diagonal terms, <strong>misalignment / non-orthogonality</strong>: axis x also sees a little of true y and z, and so on.</li>
+<li>\(\mathbf n\), white <strong>noise</strong>.</li>
+</ul>
+<p>The physical origins, from Guide 2: bias from electronic and mechanical offsets; scale from spring stiffness, gap and gain tolerances; misalignment from die placement, package and PCB mounting.</p>
+<div class="key"><strong>Key idea.</strong> A bias is the same whatever the input. Scale and misalignment errors are proportional to the input, so they can hide when the relevant input is zero. A level sensor has \(f_x=0\), so an x scale error is invisible; tilt it and the error appears. A misalignment that couples z into x is <em>not</em> hidden when level, because \(f_z=-g\) is large.</div>
+<figure><img src="img/g_scale_vs_pitch.png" alt="Pitch error against true pitch for three errors: a 2 percent x scale error is zero when level and grows with pitch; a 10 mrad x-z misalignment is largest when level; a bias gives a roughly constant error."><figcaption><strong>Figure 5.</strong> Pitch error against true pitch. Each error term has its own signature, which is why calibration needs several orientations.</figcaption></figure>
+
+<h2>5. Six-position calibration</h2>
+<h3>5.1 Least squares in one paragraph</h3>
+<p>Suppose a measurement \(y\) depends linearly on unknown parameters \(\mathbf p\): \(y_k=\mathbf h_k^\top\mathbf p+\text{noise}\). Stack \(K\) measurements into \(\mathbf y=H\mathbf p+\mathbf n\). If there are more equations than unknowns, choose \(\mathbf p\) to minimise \(\|\mathbf y-H\mathbf p\|^2\). The solution is</p>
+$$\hat{\mathbf p}=(H^\top H)^{-1}H^\top\mathbf y,$$
+<p>which numerical libraries compute stably (e.g. <code>numpy.linalg.lstsq</code>).</p>
+
+<h3>5.2 The procedure</h3>
+<ol>
+<li>Place the IMU on a level surface in six static poses: each axis pointing up, then down. The true specific force in pose \(k\) is known: \(\mathbf f_k=\pm g\,\mathbf e_i\).</li>
+<li>Average many samples in each pose to suppress noise (\(\sigma/\sqrt N\)).</li>
+<li>For each sensor axis \(i\), write \(\bar y_{k,i}=\mathbf G_i^\top\mathbf f_k+b_i\), where \(\mathbf G_i\) is row \(i\) of \(G=(I+S)M\). That is 6 equations and 4 unknowns per axis (18 and 12 in total). Solve by least squares.</li>
+<li>Correct live data with \(\hat{\mathbf f}=\hat G^{-1}(\tilde{\mathbf f}-\hat{\mathbf b})\).</li>
+</ol>
+<figure><img src="img/accel_six_position.png" alt="Six-position calibration results comparing true and estimated bias, scale and misalignment, and the tilt error before and after calibration."><figcaption><strong>Figure 6.</strong> Six-position calibration recovers bias, scale and misalignment, and the tilt error drops from degrees to hundredths of a degree.</figcaption></figure>
+<p>The test only needs gravity and a flat surface; a precision cube or a fixture makes the poses repeatable. Gyros are harder: a rest average gives the gyro bias, but gyro scale factors need a rate table.</p>
+
+<h2>6. The lever arm</h2>
+<p>Rigid-body kinematics says a point at offset \(\mathbf r\) from a reference point on a rotating body has acceleration</p>
+$$\mathbf a_{\mathrm{IMU}} = \mathbf a_{\mathrm{ref}} + \dot{\boldsymbol\omega}\times\mathbf r + \boldsymbol\omega\times(\boldsymbol\omega\times\mathbf r).$$
+<ul>
+<li>\(\boldsymbol\omega\times(\boldsymbol\omega\times\mathbf r)\) is the <strong>centripetal</strong> term, of magnitude \(\omega^2r\), pointing toward the rotation axis.</li>
+<li>\(\dot{\boldsymbol\omega}\times\mathbf r\) is the <strong>tangential</strong> (Euler) term, present while the rate changes.</li>
+</ul>
+<p>An IMU mounted off-centre therefore reports extra specific force whenever the robot turns, and an accelerometer-only tilt estimate "leans". Two fixes: mount the IMU near the rotation centre, or subtract the predicted terms using the gyro rate and a measured \(\mathbf r\) (differentiating the gyro for \(\dot{\boldsymbol\omega}\), which is noisy).</p>
+<figure><img src="img/lever_arm_tilt.png" alt="Fake pitch against yaw rate for IMUs 0.1, 0.3 and 0.5 metres from the spin axis; the error grows with the square of the rate."><figcaption><strong>Figure 7.</strong> Fake pitch from the centripetal term, for three mounting offsets. It grows with the square of the yaw rate.</figcaption></figure>
+
+<h2>7. Worked examples</h2>
+
+<div class="example">
+<h4>Example 4.1 — Tilt from a reading</h4>
+<p><strong>Problem.</strong> A quasi-static IMU (NED/FRD) reads \(\mathbf f^b=[2.0,\ -1.5,\ -9.5]\) m/s². Find roll and pitch, and check the reading is plausible.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Roll: \(\phi=\operatorname{atan2}(-f_y,-f_z)=\operatorname{atan2}(1.5,\ 9.5)=8.97^\circ\).</li>
+<li>Pitch: \(\theta=\operatorname{atan2}\big(2.0,\ \sqrt{1.5^2+9.5^2}\big)=\operatorname{atan2}(2.0,\ 9.618)=11.75^\circ\).</li>
+<li>Check: \(\|\mathbf f\|=9.82\) m/s², within 0.2 % of \(g\). If \(\|\mathbf f\|\) were, say, 11 m/s², the platform would not be quasi-static and the angles would be unreliable.</li>
+</ol>
+<p><strong>Answer.</strong> Roll ≈ 9.0° (right wing down), pitch ≈ 11.7° (nose up).</p>
+</div>
+
+<div class="example">
+<h4>Example 4.2 — Bias as tilt</h4>
+<p><strong>Problem.</strong> A level robot's accelerometer has a 0.5 m/s² bias on x. What pitch does it report? How does that compare with a 2 m/s² forward acceleration?</p>
+<p><strong>Solution.</strong> Pitch error \(=\arctan(d/g)\):</p>
+<ul>
+<li>Bias: \(\arctan(0.5/9.807)=2.92^\circ\).</li>
+<li>Surge: \(\arctan(2/9.807)=11.5^\circ\) nose-up.</li>
+</ul>
+<p><strong>Interpretation.</strong> A single static reading cannot distinguish these from genuine tilts of 2.9° and 11.5°. Calibration removes the bias; only a model of the motion (Guide 7, Guide 8) can remove the surge.</p>
+</div>
+
+<div class="example">
+<h4>Example 4.3 — How much does averaging help?</h4>
+<p><strong>Problem.</strong> Accelerometer noise is 0.02 m/s² per sample at 100 Hz. What is the standard deviation of a pitch estimate from a 1 s average?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>100 samples: \(\sigma_{\bar f}=0.02/\sqrt{100}=0.002\) m/s².</li>
+<li>Pitch sensitivity near level: \(\delta\theta\approx\delta f_x/g\), so \(\sigma_\theta=0.002/9.807=2.0\times10^{-4}\) rad \(=0.012^\circ\).</li>
+</ol>
+<p><strong>Interpretation.</strong> Noise is not the problem for static tilt; bias is. A 0.02 m/s² bias would give 0.12°, ten times the averaged noise.</p>
+</div>
+
+<div class="example">
+<h4>Example 4.4 — A one-axis calibration by hand</h4>
+<p><strong>Problem.</strong> With the x axis pointing up, the averaged reading is \(+9.95\) m/s². Pointing down, it is \(-9.71\) m/s². Ignoring misalignment, find the x bias and scale-factor error.</p>
+<p><strong>Solution.</strong> The model is \(\tilde f=(1+s)f+b\), with \(f=+g\) up and \(-g\) down:</p>
+<ol>
+<li>Add the two readings: \(9.95+(-9.71)=2b\), so \(b=0.12\) m/s² (about 12 mg).</li>
+<li>Subtract: \(9.95-(-9.71)=2(1+s)g\), so \(1+s=19.66/19.613=1.0024\), i.e. \(s=0.24\,\%\).</li>
+</ol>
+<p><strong>Answer.</strong> Bias 0.12 m/s², scale error +0.24 %. The six-position method does the same for all three axes at once, and adds the misalignment terms by using the readings of the other axes in each pose.</p>
+</div>
+
+<div class="example">
+<h4>Example 4.5 — The spinning robot</h4>
+<p><strong>Problem.</strong> An IMU is mounted 0.5 m ahead of a robot's turning centre, and the robot spins in place at 120 °/s. What does an accelerometer-only tilt estimator report?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(\omega=120^\circ/\text{s}=2.094\) rad/s.</li>
+<li>Centripetal magnitude: \(\omega^2r=2.094^2\times0.5=2.19\) m/s², pointing toward the axis, i.e. along −x.</li>
+<li>So \(f_x=-2.19\), and pitch \(=\arctan(-2.19/9.807)=-12.6^\circ\): nose-<em>down</em>.</li>
+</ol>
+<p><strong>Interpretation.</strong> The demo's "Lever arm: spinning robot" scenario shows exactly −12.6°. Compensation subtracts \(\boldsymbol\omega\times(\boldsymbol\omega\times\mathbf r)\) using the gyro rate and the known \(\mathbf r\).</p>
+</div>
+
+<h2>8. Common mistakes</h2>
+<ul>
+<li>Expecting a stationary accelerometer to read zero, or a level one to read \(+g\) on a down-pointing axis.</li>
+<li>Estimating tilt from a single sample, or while the vehicle is accelerating.</li>
+<li>Averaging to remove a bias. Averaging removes noise, not bias.</li>
+<li>Calibrating in only one orientation, which cannot separate bias from scale and misalignment.</li>
+<li>Ignoring the lever arm on robots that turn quickly (legged robots, spinning drones, arm end-effectors).</li>
+</ul>
+
+<h2>9. Using the demo</h2>
+<div class="demo">
+<p>Run <code>teaching-sims demo accelerometer</code>:</p>
+<table>
+<tr><th>Scenario</th><th>Concept</th><th>What to look for</th></tr>
+<tr><td>Level plate / Static tilt</td><td>§3.1–3.2</td><td>\(f_z\approx-9.81\); tilt recovered exactly. Moving Yaw changes nothing in the reading.</td></tr>
+<tr><td>Bias looks like tilt / Linear accel contamination / Lever arm</td><td>§3.3, §6</td><td>The yellow "apparent level" line; all markers lie on one arctangent curve.</td></tr>
+<tr><td>Vibration vs averaging</td><td>§3.4</td><td>Change the averaging window: less noise, more lag.</td></tr>
+<tr><td>Scale factor and misalignment</td><td>§4</td><td>The error changes as you tilt the plate.</td></tr>
+<tr><td>Six-position calibration</td><td>§5</td><td>Run the test, apply the calibration, then repeat with only 10 samples per pose.</td></tr>
+</table>
+<p>See Tutorial 08 for the full walkthrough and lab sheet.</p>
+</div>
+
+<h2>10. Practice problems</h2>
+<ol>
+<li>What does a FRD accelerometer read (all three axes) when the vehicle is upside down and at rest?</li>
+<li>An IMU reads \(\mathbf f^b=[0,\ 4.905,\ -8.496]\) m/s². Find roll and pitch.</li>
+<li>A car accelerating at 3 m/s² uses an accelerometer-only pitch estimate. What pitch error results, and in which direction?</li>
+<li>How many samples must be averaged to reduce a 0.05 m/s² per-sample noise to 0.001 m/s²?</li>
+<li>In the six-position test, why is each axis placed both up and down rather than just up?</li>
+<li>An IMU on a robot arm's end effector is 0.8 m from the shoulder joint, which rotates at 60 °/s and is accelerating at 90 °/s². Compute the magnitudes of the centripetal and tangential terms.</li>
+<li>Why can't a six-position test determine the yaw misalignment of the IMU relative to the robot body?</li>
+</ol>
+
+<h2>11. Summary of key equations</h2>
+<table>
+<tr><th>Quantity</th><th>Equation</th></tr>
+<tr><td>Specific force</td><td>\(\mathbf f^b=R^b_n(\mathbf a^n-\mathbf g^n)\); level at rest (FRD): \([0,0,-g]\)</td></tr>
+<tr><td>Static roll and pitch</td><td>\(\phi=\operatorname{atan2}(-f_y,-f_z),\ \theta=\operatorname{atan2}(f_x,\sqrt{f_y^2+f_z^2})\)</td></tr>
+<tr><td>Disturbance as tilt</td><td>\(\delta\theta=\arctan(d/g)\approx d/g\)</td></tr>
+<tr><td>Averaging</td><td>\(\sigma_{\bar x}=\sigma/\sqrt N\)</td></tr>
+<tr><td>Error model</td><td>\(\tilde{\mathbf f}=(I+S)M\mathbf f+\mathbf b+\mathbf n\)</td></tr>
+<tr><td>Least squares</td><td>\(\hat{\mathbf p}=(H^\top H)^{-1}H^\top\mathbf y\)</td></tr>
+<tr><td>Lever arm</td><td>\(\mathbf a_{\mathrm{IMU}}=\mathbf a_{\mathrm{ref}}+\dot{\boldsymbol\omega}\times\mathbf r+\boldsymbol\omega\times(\boldsymbol\omega\times\mathbf r)\)</td></tr>
+</table>
+
+<h2>12. Answers to practice problems</h2>
+<ol>
+<li class="answer">Upside down (roll 180°): \(\mathbf f^b=[0,0,+g]\). The support still pushes "up", which is now along body +z.</li>
+<li class="answer">\(\phi=\operatorname{atan2}(-4.905,\ 8.496)=-30^\circ\); \(\theta=\operatorname{atan2}(0,\ 9.807)=0^\circ\). Rolled 30° left wing down, level in pitch.</li>
+<li class="answer">\(\arctan(3/9.807)=17.0^\circ\), nose-up.</li>
+<li class="answer">\(\sqrt N=0.05/0.001=50\), so \(N=2500\) samples (25 s at 100 Hz).</li>
+<li class="answer">Up and down readings are \(b+(1+s)g\) and \(b-(1+s)g\): their sum isolates the bias and their difference the scale factor. With one orientation, bias and scale are confounded.</li>
+<li class="answer">\(\omega=1.047\) rad/s: centripetal \(\omega^2r=0.877\) m/s². \(\dot\omega=1.571\) rad/s²: tangential \(\dot\omega r=1.257\) m/s².</li>
+<li class="answer">Gravity only ever defines the vertical, and rotating the IMU about the vertical does not change the gravity components. Yaw misalignment needs a horizontal reference: a known motion (e.g. driving straight), a magnetometer or an external measurement.</li>
+</ol>
+
+<h2>13. Further reading</h2>
+<ul>
+<li>P. Groves, <em>Principles of GNSS, Inertial, and Multisensor Integrated Navigation Systems</em>, 2nd ed., Ch. 4 (inertial sensors) and Ch. 5.</li>
+<li>D. Tedaldi, A. Pretto and E. Menegatti, "A robust and easy to implement method for IMU calibration without external equipments", <em>ICRA</em> 2014.</li>
+<li>Analog Devices AN-1057, "Using an accelerometer for inclination sensing".</li>
+</ul>

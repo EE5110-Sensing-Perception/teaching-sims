@@ -1,0 +1,342 @@
+<!-- title: Guide 1 — Frames, Rotations and Attitude Kinematics -->
+<div class="overview">
+<p><strong>Demo:</strong> <code>teaching-sims demo attitude</code><br>
+<strong>Prerequisites:</strong> vectors, matrix multiplication, the dot and cross products, radians<br>
+<strong>Time:</strong> about 2 hours of reading, plus the demo walkthrough (Tutorial 10)</p>
+<p>By the end of this guide you should be able to:</p>
+<ul>
+<li>say precisely what a <em>frame</em> is, and distinguish the sensor, body and navigation frames;</li>
+<li>convert an attitude between the aerospace convention (NED/FRD) and the ROS convention (ENU/FLU);</li>
+<li>build and read a rotation matrix, ZYX Euler angles, a unit quaternion and an axis–angle vector, and convert between them;</li>
+<li>explain why the order of rotations matters, and what "intrinsic" and "extrinsic" mean;</li>
+<li>explain gimbal lock as a failure of the coordinates, not of the vehicle;</li>
+<li>integrate gyro rates into attitude, and explain first-order, renormalisation and coning errors.</li>
+</ul>
+</div>
+
+<h2>1. Why this matters</h2>
+<p>Everything an IMU measures is a vector expressed in the <em>sensor's own axes</em>. Before a robot can use that measurement, for example to know which way is down or which way it is heading, it must rotate the vector into a frame that means something to the rest of the system. Getting this wrong is the single most common source of IMU bugs in robotics: an axis swapped, a sign flipped, yaw measured from the wrong reference, a quaternion stored in the wrong order. None of these bugs crash the program. They quietly produce a robot that drives in circles.</p>
+<p>This guide builds the vocabulary and the mathematics that every later guide relies on.</p>
+
+<h2>2. Key terms</h2>
+<table>
+<tr><th style="width:26%">Term</th><th>Definition</th></tr>
+<tr><td>Frame (coordinate frame)</td><td>An origin plus three mutually perpendicular unit axes, used to write a vector as three numbers. The same physical vector has different numbers in different frames.</td></tr>
+<tr><td>Right-handed frame</td><td>Axes ordered so that \(\hat{x}\times\hat{y}=\hat{z}\). Curl the fingers of your right hand from x to y; your thumb points along z. All frames in this module are right-handed.</td></tr>
+<tr><td>Sensor frame \(s\)</td><td>The axes printed on the IMU chip or its datasheet.</td></tr>
+<tr><td>Body frame \(b\)</td><td>Axes fixed to the robot, usually at a chosen reference point. The IMU is mounted in it with a fixed rotation \(R_{bs}\) and offset (lever arm) \(\mathbf r\).</td></tr>
+<tr><td>Navigation frame \(n\)</td><td>A local-level frame fixed to the Earth near the robot: one axis vertical, the others horizontal (north/east). Also called the world or map frame.</td></tr>
+<tr><td>Attitude (orientation)</td><td>The rotation that relates the body frame to the navigation frame. Position is <em>where</em> the robot is; attitude is <em>which way it faces</em>.</td></tr>
+<tr><td>Roll \(\phi\), pitch \(\theta\), yaw \(\psi\)</td><td>Rotations about the body's forward, sideways and vertical axes. Yaw is also called heading.</td></tr>
+<tr><td>Rotation matrix / DCM</td><td>A 3×3 matrix \(R\) with \(R^\top R=I\) and \(\det R=+1\) that rotates vectors between frames. "Direction cosine matrix" (DCM) is the navigation name for the same object.</td></tr>
+<tr><td>SO(3)</td><td>"Special orthogonal group in 3-D": the set of all valid rotation matrices. "Leaving SO(3)" means a matrix that should be a rotation no longer is.</td></tr>
+<tr><td>Euler angles</td><td>Three successive rotations about coordinate axes, in a stated order (for us Z, then Y, then X).</td></tr>
+<tr><td>Quaternion</td><td>A four-number representation \(q=[q_w,\ q_x,\ q_y,\ q_z]\) of a rotation. Unit quaternions (length 1) represent rotations without singularities.</td></tr>
+<tr><td>Axis–angle / rotation vector</td><td>A rotation described by a unit axis \(\hat n\) and an angle \(\alpha\) about it; the rotation vector is \(\alpha\hat n\).</td></tr>
+<tr><td>Skew-symmetric matrix \([\mathbf a]_\times\)</td><td>The matrix that performs a cross product: \([\mathbf a]_\times\mathbf b=\mathbf a\times\mathbf b\).</td></tr>
+<tr><td>Angular velocity \(\boldsymbol\omega\)</td><td>The rate of rotation, in rad/s or deg/s. A gyro measures it in body axes: \(\boldsymbol\omega^b_{nb}\), "the rate of \(b\) relative to \(n\), written in \(b\)".</td></tr>
+<tr><td>Singularity</td><td>A point where a parameterisation breaks down: some quantity becomes undefined or infinite even though nothing physical has changed.</td></tr>
+</table>
+
+<h2>3. Background: vectors, frames and notation</h2>
+<h3>3.1 A vector is not its components</h3>
+<p>A vector such as "gravity" or "the direction the nose points" is a physical arrow. To compute with it we pick a frame and write down its three components along that frame's axes. We use a superscript for the frame the components are written in:</p>
+<ul>
+<li>\(\mathbf v^n\): the vector \(\mathbf v\) written in navigation axes;</li>
+<li>\(\mathbf v^b\): the same vector written in body axes.</li>
+</ul>
+<p>Both describe the same arrow. The rotation matrix converts one set of numbers into the other:</p>
+$$\mathbf v^n = R^n_b\,\mathbf v^b, \qquad \mathbf v^b = R^b_n\,\mathbf v^n = (R^n_b)^\top\mathbf v^n .$$
+<p>Read \(R^n_b\) as "from \(b\) to \(n\)". The subscript cancels against the vector's superscript, which is a useful check that you have not used the wrong matrix. Because a rotation matrix is orthogonal, its inverse is simply its transpose.</p>
+
+<h3>3.2 Dot and cross products (refresher)</h3>
+<ul>
+<li><strong>Dot product</strong> \(\mathbf a\cdot\mathbf b = a_xb_x+a_yb_y+a_zb_z = \|\mathbf a\|\|\mathbf b\|\cos\gamma\). It measures how much two vectors point the same way. For unit vectors it is the cosine of the angle between them.</li>
+<li><strong>Cross product</strong> \(\mathbf a\times\mathbf b\) is perpendicular to both, with length \(\|\mathbf a\|\|\mathbf b\|\sin\gamma\) and direction given by the right-hand rule.</li>
+</ul>
+<p>The cross product can be written as a matrix multiplication, which is how it appears in the kinematics:</p>
+$$[\mathbf a]_\times = \begin{bmatrix}0&-a_z&a_y\\ a_z&0&-a_x\\ -a_y&a_x&0\end{bmatrix},\qquad [\mathbf a]_\times\,\mathbf b = \mathbf a\times\mathbf b .$$
+<p>The matrix is <em>skew-symmetric</em>: \([\mathbf a]_\times^\top = -[\mathbf a]_\times\).</p>
+
+<h3>3.3 What makes a matrix a rotation</h3>
+<p>A rotation preserves lengths and angles, and does not mirror. In matrix terms:</p>
+<ul>
+<li><strong>Orthogonal:</strong> \(R^\top R = I\). The columns are unit length and mutually perpendicular. Lengths and angles are preserved.</li>
+<li><strong>Proper:</strong> \(\det R = +1\). A matrix with \(\det R=-1\) is also orthogonal but it is a <em>reflection</em>, turning a right-handed frame into a left-handed one. No physical motion can do that, so a filter that produces \(\det R=-1\) has a bug.</li>
+</ul>
+<div class="key"><strong>Key idea.</strong> The columns of \(R^n_b\) are the body axes written in navigation coordinates: column 1 is where the nose points, column 2 is the body y axis, column 3 the body z axis. The rows are the navigation axes written in body coordinates. Reading a DCM this way is the fastest route to debugging one.</div>
+
+<h2>4. Frames and conventions</h2>
+<h3>4.1 The three frames</h3>
+<p>A robot needs at least three frames:</p>
+<ol>
+<li><strong>Sensor frame</strong> \(s\): the chip's axes. You rarely use it directly, because the chip may be mounted rotated on the circuit board.</li>
+<li><strong>Body frame</strong> \(b\): the robot's axes. The fixed mounting rotation \(R_{bs}\) comes from the CAD model or a calibration, and \(\mathbf f^b = R_{bs}\mathbf f^s\).</li>
+<li><strong>Navigation frame</strong> \(n\): local-level and Earth-fixed. For a robot operating over a few kilometres we treat it as flat and non-rotating (Guide 8 revisits this).</li>
+</ol>
+
+<h3>4.2 Two conventions: aerospace and ROS</h3>
+<p>Two conventions dominate. They describe the same physics with different axis choices:</p>
+<table>
+<tr><th></th><th>Aerospace (and most IMU datasheets, PX4, ArduPilot)</th><th>ROS REP-103 (and most robotics software)</th></tr>
+<tr><td>Navigation frame</td><td><strong>NED</strong>: x = North, y = East, z = Down</td><td><strong>ENU</strong>: x = East, y = North, z = Up</td></tr>
+<tr><td>Body frame</td><td><strong>FRD</strong>: x = Forward, y = Right, z = Down</td><td><strong>FLU</strong>: x = Forward, y = Left, z = Up</td></tr>
+<tr><td>Yaw zero and direction</td><td>0 = facing North, positive clockwise seen from above</td><td>0 = facing East, positive counter-clockwise seen from above</td></tr>
+<tr><td>Nose-up pitch</td><td>positive</td><td>negative</td></tr>
+<tr><td>Gravity vector</td><td>\(\mathbf g^n=[0,0,+g]\)</td><td>\(\mathbf g^n=[0,0,-g]\)</td></tr>
+</table>
+<figure><img src="img/g_frames_conventions.png" alt="Two 3-D sketches of the same level vehicle, nose 30 degrees east of north. Left: NED navigation axes and forward-right-down body axes. Right: ENU navigation axes and forward-left-up body axes."><figcaption><strong>Figure 1.</strong> The same physical pose in both conventions. The vehicle has not moved; only the labels and signs have changed. Body axes are coloured red, green, blue for x, y, z, as in rviz.</figcaption></figure>
+<p>The conversion between the two is a pair of fixed axis permutations:</p>
+$$R^{\mathrm{ENU}}_{\mathrm{FLU}} = T\,R^{\mathrm{NED}}_{\mathrm{FRD}}\,T_b,\qquad
+T=\begin{bmatrix}0&1&0\\1&0&0\\0&0&-1\end{bmatrix},\qquad T_b=\begin{bmatrix}1&0&0\\0&-1&0\\0&0&-1\end{bmatrix}.$$
+<p>\(T\) swaps north and east and flips the vertical. \(T_b\) flips body y and z (right becomes left, down becomes up). In Euler angles the result is:</p>
+$$\psi_{\mathrm{ROS}} = 90^\circ - \psi_{\mathrm{NED}},\qquad \theta_{\mathrm{ROS}} = -\theta_{\mathrm{NED}},\qquad \phi_{\mathrm{ROS}} = \phi_{\mathrm{NED}} .$$
+<div class="warn"><strong>Common bug.</strong> A ROS node reports yaw = 0 and a developer assumes the robot faces north. It faces <em>east</em>. Always check which convention a driver or library uses before combining its output with anything else.</div>
+
+<h2>5. Representing attitude</h2>
+<p>There are four common ways to write down a rotation. Each has a job it does well and a way it fails.</p>
+<table>
+<tr><th>Representation</th><th>Numbers</th><th>Good for</th><th>Watch out for</th></tr>
+<tr><td>Rotation matrix (DCM)</td><td>9 (with 6 constraints)</td><td>rotating vectors, composing rotations</td><td>numerical drift off SO(3)</td></tr>
+<tr><td>Euler angles (ZYX)</td><td>3</td><td>humans, logs, user interfaces</td><td>singular at pitch ±90°; order-dependent</td></tr>
+<tr><td>Unit quaternion</td><td>4 (with 1 constraint)</td><td>propagation in filters; no singularity</td><td>\(q\) and \(-q\) are the same rotation; storage order</td></tr>
+<tr><td>Rotation vector \(\alpha\hat n\)</td><td>3</td><td>small errors and filter corrections</td><td>wraps around at 180°</td></tr>
+</table>
+
+<h3>5.1 Elementary rotations</h3>
+<p>A rotation by angle \(a\) about a single coordinate axis is an <em>elementary rotation</em>:</p>
+$$R_x(a)=\begin{bmatrix}1&0&0\\0&\cos a&-\sin a\\0&\sin a&\cos a\end{bmatrix},\quad
+R_y(a)=\begin{bmatrix}\cos a&0&\sin a\\0&1&0\\-\sin a&0&\cos a\end{bmatrix},\quad
+R_z(a)=\begin{bmatrix}\cos a&-\sin a&0\\\sin a&\cos a&0\\0&0&1\end{bmatrix}.$$
+<p>Each leaves its own axis unchanged (the row and column of ones) and rotates the other two in their plane.</p>
+<figure><img class="narrow" src="img/g_dcm_2d.png" alt="Top view of a 30 degree yaw rotation. The body x axis points 30 degrees east of north with components 0.866 north and 0.5 east. The body y axis points to the right with components minus 0.5 north and 0.866 east."><figcaption><strong>Figure 2.</strong> A yaw of 30° in NED. The body x axis written in (N, E, D) is the first column of \(R_z(30^\circ)\); the body y axis is the second column.</figcaption></figure>
+
+<h3>5.2 ZYX Euler angles</h3>
+<p>The aerospace convention builds the attitude from yaw, then pitch, then roll:</p>
+$$R^n_b = R_z(\psi)\,R_y(\theta)\,R_x(\phi).$$
+<p>Multiplying it out:</p>
+$$R^n_b=\begin{bmatrix}
+c_\theta c_\psi & s_\phi s_\theta c_\psi - c_\phi s_\psi & c_\phi s_\theta c_\psi + s_\phi s_\psi\\
+c_\theta s_\psi & s_\phi s_\theta s_\psi + c_\phi c_\psi & c_\phi s_\theta s_\psi - s_\phi c_\psi\\
+-s_\theta & s_\phi c_\theta & c_\phi c_\theta\end{bmatrix}$$
+<p>where \(c_\theta=\cos\theta\), \(s_\theta=\sin\theta\), and so on. To recover the angles from a matrix, read off the bottom row and first column:</p>
+$$\theta = -\arcsin R_{31},\qquad \phi=\operatorname{atan2}(R_{32},\,R_{33}),\qquad \psi=\operatorname{atan2}(R_{21},\,R_{11}).$$
+<div class="def"><strong>atan2.</strong> \(\operatorname{atan2}(y,x)\) returns the angle of the point \((x,y)\) in the full range \(-180^\circ\) to \(+180^\circ\). Plain \(\arctan(y/x)\) only covers \(\pm 90^\circ\) and cannot tell \((1,1)\) from \((-1,-1)\). Always use atan2 for angles. Note the argument order: \(y\) first.</div>
+
+<h3>5.3 Axis–angle and the rotation vector</h3>
+<p>Euler's rotation theorem says any rotation can be achieved by a single rotation of angle \(\alpha\) about a fixed unit axis \(\hat n\). The corresponding matrix is given by <em>Rodrigues' formula</em>:</p>
+$$R = I + \sin\alpha\,[\hat n]_\times + (1-\cos\alpha)\,[\hat n]_\times^2 .$$
+<p>For a small angle, \(\sin\alpha\approx\alpha\) and \(1-\cos\alpha\approx 0\), so \(R\approx I+[\alpha\hat n]_\times\). This small-angle form is how filters represent attitude <em>errors</em>.</p>
+
+<h3>5.4 Unit quaternions</h3>
+<p>A quaternion has a scalar part and a vector part. The unit quaternion for a rotation of \(\alpha\) about \(\hat n\) is</p>
+$$q = \begin{bmatrix}q_w\\ \mathbf q_v\end{bmatrix} = \begin{bmatrix}\cos(\alpha/2)\\ \hat n\sin(\alpha/2)\end{bmatrix},\qquad \|q\|=1 .$$
+<p>Quaternions compose with the <em>quaternion product</em> \(\otimes\):</p>
+$$p\otimes q = \begin{bmatrix}p_wq_w - \mathbf p_v\cdot\mathbf q_v\\ p_w\mathbf q_v + q_w\mathbf p_v + \mathbf p_v\times\mathbf q_v\end{bmatrix}.$$
+<p>A vector is rotated by \(\mathbf v^n = q\otimes[0,\ \mathbf v^b]\otimes q^{*}\), where \(q^*=[q_w,\,-\mathbf q_v]\) is the conjugate (the inverse for a unit quaternion). In practice most libraries convert \(q\) to a matrix and multiply.</p>
+<p><strong>Double cover.</strong> Replacing \(\alpha\) by \(\alpha+360^\circ\) gives the same physical rotation but flips the sign of every quaternion component, because of the half angle. So \(q\) and \(-q\) represent the <em>same</em> rotation.</p>
+<figure><img src="img/g_quat_double_cover.png" alt="Plot of cos alpha and cos alpha over 2 against rotation angle from 0 to 720 degrees. The DCM entry repeats every 360 degrees; the quaternion scalar part only repeats every 720 degrees."><figcaption><strong>Figure 3.</strong> A DCM entry returns to its starting value after 360°, but the quaternion needs 720°. At 360° the quaternion has flipped sign while describing the identical attitude.</figcaption></figure>
+<div class="warn"><strong>Two practical traps.</strong>
+<ul>
+<li><strong>Sign:</strong> averaging \(q\) and \(-q\) gives zero, and differencing them gives a "360° error" for identical attitudes. Before averaging or differencing, flip one quaternion so that \(q_1\cdot q_2\ge 0\).</li>
+<li><strong>Storage order:</strong> this module writes \(q=[w,x,y,z]\) (scalar first, Hamilton convention). ROS messages, Eigen's constructor and SciPy's <code>as_quat()</code> use \([x,y,z,w]\). Check every interface.</li>
+</ul></div>
+
+<h2>6. Composition order: intrinsic and extrinsic</h2>
+<p>Rotations do not commute: rotating 90° about z and then 90° about y gives a different result from doing it the other way round. So the <em>order</em> of the three Euler rotations must be stated, and so must the axes they are about.</p>
+<ul>
+<li><strong>Intrinsic</strong> rotations are about the <em>body's own, current</em> axes. The aerospace sequence is intrinsic Z–Y′–X″: yaw about body z, then pitch about the <em>new</em> body y (written y′), then roll about the <em>newest</em> body x (x″).</li>
+<li><strong>Extrinsic</strong> rotations are about the <em>fixed</em> navigation axes.</li>
+</ul>
+<p>An intrinsic sequence is the same as the extrinsic sequence in the <em>reverse</em> order. Intrinsic Z–Y′–X″ equals extrinsic X–Y–Z about fixed axes, and both give \(R_z(\psi)R_y(\theta)R_x(\phi)\). The rule for the matrix product is:</p>
+<div class="key"><strong>Rule of thumb.</strong> Intrinsic (body-axis) rotations multiply on the <em>right</em>; extrinsic (fixed-axis) rotations multiply on the <em>left</em>. So \(R_z R_y R_x\) is read left to right as intrinsic "yaw, then pitch, then roll", or right to left as extrinsic "roll, then pitch, then yaw about fixed axes".</div>
+<figure><img src="img/rotation_order.png" alt="3-D sequences comparing a ZYX build-up and a roll-first XYZ build-up with the same three angles, ending in visibly different poses."><figcaption><strong>Figure 4.</strong> The same three angles (yaw 60°, pitch 30°, roll 40°) applied in two different orders end in two different poses, about 42° apart.</figcaption></figure>
+
+<h2>7. Gimbal lock</h2>
+<p>The gyro measures body rates \(\boldsymbol\omega=[\omega_x,\omega_y,\omega_z]\). The Euler angles change at rates</p>
+$$\begin{bmatrix}\dot\phi\\ \dot\theta\\ \dot\psi\end{bmatrix} =
+\begin{bmatrix}1 & \sin\phi\tan\theta & \cos\phi\tan\theta\\ 0&\cos\phi&-\sin\phi\\ 0 & \sin\phi/\cos\theta & \cos\phi/\cos\theta\end{bmatrix}\boldsymbol\omega .$$
+<p>At \(\theta=\pm 90^\circ\), \(\cos\theta=0\) and the first and last rows blow up. Physically, when the nose points straight up, the yaw axis and the roll axis line up, so yaw and roll describe the same motion. Only their difference (or sum) is defined. This is <strong>gimbal lock</strong>.</p>
+<figure><img src="img/gimbal_sensitivity.png" alt="Plot of the change in extracted yaw and roll for a 0.5 degree body rotation against pitch; the change grows like 1 over cos theta and exceeds tens of degrees near 90 degrees pitch."><figcaption><strong>Figure 5.</strong> Sensitivity of the extracted Euler angles to a small 0.5° body rotation, against pitch. Near ±90° a tiny physical motion produces a huge change in the numbers.</figcaption></figure>
+<div class="key"><strong>Key idea.</strong> Nothing happens to the vehicle at 90° pitch. The <em>coordinates</em> become singular, in the same way that longitude is undefined at the North Pole. This is why filters propagate quaternions or rotation matrices internally, and convert to Euler angles only for display.</div>
+
+<h2>8. Attitude kinematics and integration</h2>
+<h3>8.1 The continuous-time equations</h3>
+<p>If the body rotates with rate \(\boldsymbol\omega\) (in body axes), the attitude changes as</p>
+$$\dot R^n_b = R^n_b\,[\boldsymbol\omega]_\times,\qquad \dot q = \tfrac12\,q\otimes\begin{bmatrix}0\\ \boldsymbol\omega\end{bmatrix}.$$
+<p>Where does the first come from? Each column of \(R\) is a body axis, and a vector fixed in a body rotating at \(\boldsymbol\omega\) changes at \(\boldsymbol\omega\times\) itself. Written in body axes and rotated to nav, that is \(R[\boldsymbol\omega]_\times\). The factor \(R\) is on the left because \(\boldsymbol\omega\) is in body axes (an intrinsic rotation).</p>
+
+<h3>8.2 Discrete-time integration</h3>
+<p>The IMU delivers samples every \(\Delta t\). Three ways to step the attitude forward:</p>
+<ol>
+<li><strong>First-order (Euler) DCM step:</strong> \(R_{k+1}=R_k(I+[\boldsymbol\omega]_\times\Delta t)\). Simple, but \(I+[\boldsymbol\omega]_\times\Delta t\) is not a rotation: its determinant is \(1+\|\boldsymbol\omega\|^2\Delta t^2\). Every step stretches the matrix slightly, and the error compounds.</li>
+<li><strong>Renormalisation:</strong> after each step, force \(R\) back onto SO(3), for example by Gram–Schmidt on its columns or via the SVD. This restores \(R^\top R=I\) and \(\det R=1\), but it does <em>not</em> recover the lost accuracy. The attitude is still wrong; it is just a valid rotation that is wrong.</li>
+<li><strong>Exponential-map step:</strong> treat the rotation over one step as an axis–angle rotation of \(\boldsymbol\omega\Delta t\) and apply it exactly:
+$$q_{k+1} = q_k\otimes\begin{bmatrix}\cos(\|\boldsymbol\omega\|\Delta t/2)\\ \hat{\boldsymbol\omega}\,\sin(\|\boldsymbol\omega\|\Delta t/2)\end{bmatrix}.$$
+This is exact whenever \(\boldsymbol\omega\) is constant over the step. Renormalise \(q\) occasionally to remove round-off.</li>
+</ol>
+<figure><img src="img/rate_integration.png" alt="Attitude error against time for first-order DCM integration, renormalised DCM and quaternion exponential map; the first two grow, the exponential map stays near zero."><figcaption><strong>Figure 6.</strong> Integrating a constant 90°/s rotation. The first-order DCM drifts, renormalising does not help the attitude error, and the exponential map is exact.</figcaption></figure>
+
+<h3>8.3 Coning</h3>
+<p>If the rotation axis itself moves within a sample interval, even the exponential map is wrong, because it assumes a constant \(\boldsymbol\omega\). A classic case is <em>coning</em>: \(\boldsymbol\omega = [a\cos\Omega t,\ a\sin\Omega t,\ 0]\). The x and y rates are sinusoids that average to zero, yet the body undergoes a steady net rotation about z. Sampled rates miss part of it.</p>
+<figure><img src="img/coning_dt.png" alt="Coning attitude error against integration step size, falling steeply as the step gets smaller."><figcaption><strong>Figure 7.</strong> Coning error falls rapidly as the integration step shrinks.</figcaption></figure>
+<p>Higher-grade IMUs solve this internally: they integrate at kHz rates, apply a coning correction, and output angle increments \(\Delta\boldsymbol\theta\) (and velocity increments \(\Delta\mathbf v\)) per output sample. If your IMU offers these increments, use them rather than instantaneous rates.</p>
+
+<h2>9. Worked examples</h2>
+
+<div class="example">
+<h4>Example 1.1 — Reading a DCM and rotating a vector</h4>
+<p><strong>Problem.</strong> A ground robot is level with yaw \(\psi=30^\circ\) (NED). A LiDAR on the robot detects an obstacle 2 m straight ahead. Where is the obstacle relative to the robot, in north and east?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Level means \(\theta=\phi=0\), so \(R^n_b = R_z(30^\circ)\):
+$$R^n_b=\begin{bmatrix}0.866&-0.500&0\\0.500&0.866&0\\0&0&1\end{bmatrix}.$$</li>
+<li>"Straight ahead" in body axes is \(\mathbf v^b=[2,\,0,\,0]\).</li>
+<li>\(\mathbf v^n = R^n_b\mathbf v^b = 2\times(\text{first column}) = [1.732,\ 1.000,\ 0]\).</li>
+</ol>
+<p><strong>Answer.</strong> 1.73 m north and 1.00 m east. Notice that we did not need the full multiplication: a body x vector just picks out the first column.</p>
+</div>
+
+<div class="example">
+<h4>Example 1.2 — Euler angles to DCM and back</h4>
+<p><strong>Problem.</strong> Build \(R^n_b\) for \(\psi=30^\circ,\ \theta=20^\circ,\ \phi=10^\circ\), then recover the angles from the matrix.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Compute \(R_z(30^\circ)R_y(20^\circ)R_x(10^\circ)\), either directly or from the closed form in §5.2:
+$$R^n_b=\begin{bmatrix}0.8138&-0.4410&0.3785\\0.4698&0.8826&0.0180\\-0.3420&0.1632&0.9254\end{bmatrix}.$$</li>
+<li>Check it is a rotation: each column has unit length, for example \(0.8138^2+0.4698^2+0.3420^2=1.000\).</li>
+<li>Pitch: \(\theta=-\arcsin(R_{31})=-\arcsin(-0.3420)=20.0^\circ\).</li>
+<li>Roll: \(\phi=\operatorname{atan2}(0.1632,\ 0.9254)=10.0^\circ\).</li>
+<li>Yaw: \(\psi=\operatorname{atan2}(0.4698,\ 0.8138)=30.0^\circ\).</li>
+</ol>
+<p><strong>Interpretation.</strong> Column 1, \([0.814,\,0.470,\,-0.342]\), is the nose direction. Its negative down component (\(-0.342=-\sin 20^\circ\)) shows the nose is pitched up by 20°.</p>
+</div>
+
+<div class="example">
+<h4>Example 1.3 — Converting NED to ROS</h4>
+<p><strong>Problem.</strong> An autopilot reports yaw 30°, pitch 10° (nose up), roll 5°, in NED/FRD. What does a ROS node expect?</p>
+<p><strong>Solution.</strong> Apply the rules from §4.2:</p>
+<ul>
+<li>\(\psi_{\mathrm{ROS}}=90^\circ-30^\circ=60^\circ\) (measured from east, counter-clockwise);</li>
+<li>\(\theta_{\mathrm{ROS}}=-10^\circ\) (nose up is negative about the left-pointing y axis);</li>
+<li>\(\phi_{\mathrm{ROS}}=5^\circ\).</li>
+</ul>
+<p><strong>Check.</strong> Computing \(T\,R^{\mathrm{NED}}_{\mathrm{FRD}}\,T_b\) numerically and extracting ZYX angles gives (60.0°, −10.0°, 5.0°). The pose is the same; only the description changed.</p>
+</div>
+
+<div class="example">
+<h4>Example 1.4 — A quaternion by hand</h4>
+<p><strong>Problem.</strong> Write the quaternion for a 90° rotation about the z axis, and use it to rotate the vector \([1,0,0]\).</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(\alpha=90^\circ\), \(\hat n=[0,0,1]\), so \(q=[\cos 45^\circ,\ 0,\ 0,\ \sin 45^\circ]=[0.7071,\ 0,\ 0,\ 0.7071]\).</li>
+<li>Convert to a matrix, or recognise it as \(R_z(90^\circ)\), whose first column is \([0,1,0]\).</li>
+<li>So \([1,0,0]\mapsto[0,1,0]\): north becomes east, a 90° clockwise turn seen from above in NED.</li>
+</ol>
+<p><strong>Double cover.</strong> \(-q=[-0.7071,0,0,-0.7071]\) corresponds to \(\alpha=-270^\circ\) about z, which gives the same rotation matrix. In ROS order, \(q\) would be stored as <code>x=0, y=0, z=0.7071, w=0.7071</code>.</p>
+</div>
+
+<div class="example">
+<h4>Example 1.5 — Order matters</h4>
+<p><strong>Problem.</strong> Start level, facing north. Sequence A: yaw 90° then pitch 90° (body axes). Sequence B: pitch 90° then yaw 90° (body axes). Where does the nose point after each?</p>
+<p><strong>Solution.</strong> The nose is the first column of the final matrix.</p>
+<ul>
+<li>A: \(R_z(90^\circ)R_y(90^\circ)\). The first column is \([0,0,-1]\): the nose points <strong>up</strong>. Turning east and then pitching up leaves the nose vertical.</li>
+<li>B: \(R_y(90^\circ)R_z(90^\circ)\). The first column is \([0,1,0]\): the nose points <strong>east</strong>. After pitching up, "yaw about body z" swings the nose sideways in the vertical plane, bringing it back down to the horizon facing east.</li>
+</ul>
+<p><strong>Answer.</strong> Same angles, completely different poses.</p>
+</div>
+
+<div class="example">
+<h4>Example 1.6 — How bad is gimbal lock?</h4>
+<p><strong>Problem.</strong> A quadrotor is at \(\theta=85^\circ\), \(\phi=0\). It rotates 0.5° about its body z axis. How much does the extracted yaw change? Repeat at 89.5°.</p>
+<p><strong>Solution.</strong> With \(\phi=0\), \(\dot\psi=\omega_z/\cos\theta\), so \(\Delta\psi\approx 0.5^\circ/\cos\theta\).</p>
+<ul>
+<li>At 85°: \(0.5/\cos 85^\circ = 0.5/0.0872 = 5.7^\circ\).</li>
+<li>At 89.5°: \(0.5/0.00873=57^\circ\).</li>
+</ul>
+<p><strong>Interpretation.</strong> A controller or filter written in Euler angles would see enormous, meaningless jumps. The vehicle moved half a degree.</p>
+</div>
+
+<div class="example">
+<h4>Example 1.7 — First-order integration error</h4>
+<p><strong>Problem.</strong> A gyro reports a constant 90°/s about z, integrated with the first-order DCM step at \(\Delta t=50\) ms. What happens to \(\det R\) after 10 s?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Rotation per step: \(\|\boldsymbol\omega\|\Delta t = 1.571\ \text{rad/s}\times0.05\ \text{s} = 0.0785\) rad.</li>
+<li>\(\det(I+[\boldsymbol\omega]_\times\Delta t)=1+0.0785^2=1.00617\) per step.</li>
+<li>200 steps: \(1.00617^{200}=3.42\). Each column is stretched by \(\sqrt{3.42}\approx1.85\) in the plane of rotation.</li>
+</ol>
+<p><strong>Interpretation.</strong> The "rotation" now inflates any vector it touches by 85 %. Renormalising restores unit length, but the heading error accumulated by the first-order steps remains. The exponential map has no such error for a constant rate.</p>
+</div>
+
+<h2>10. Common mistakes</h2>
+<ul>
+<li>Using \(R^n_b\) where \(R^b_n\) is needed. Check that subscripts and superscripts cancel.</li>
+<li>Mixing conventions: NED yaw fed into an ENU map, or FRD accelerations into a FLU estimator.</li>
+<li>Quaternion storage order: <code>[w,x,y,z]</code> vs <code>[x,y,z,w]</code>.</li>
+<li>Using <code>atan</code> instead of <code>atan2</code>, which loses the quadrant.</li>
+<li>Propagating Euler angles in a filter for a vehicle that can pitch steeply.</li>
+<li>Believing renormalisation fixes integration error.</li>
+<li>Degrees vs radians: gyros often report deg/s; trigonometric functions expect radians.</li>
+</ul>
+
+<h2>11. Using the demo</h2>
+<div class="demo">
+<p>Run <code>teaching-sims demo attitude</code> and load these scenarios in turn:</p>
+<table>
+<tr><th>Scenario</th><th>Concept</th><th>What to look for</th></tr>
+<tr><td>Level heading / Nose-up pitch</td><td>§3.3, §5.2</td><td>Read the DCM columns as body axes. Nose-up pitch gives column 1 a negative D component.</td></tr>
+<tr><td>NED/FRD vs ROS ENU/FLU</td><td>§4.2</td><td>Toggle the Frames combo. The box does not move; the numbers and axis arrows do.</td></tr>
+<tr><td>Build ZYX / Extrinsic = intrinsic / Order matters</td><td>§6</td><td>The yellow rotation axis moves with the body (intrinsic) or stays fixed (extrinsic).</td></tr>
+<tr><td>Gimbal lock</td><td>§7</td><td>Drag pitch toward 90° and watch the marker climb the \(1/\cos\theta\) curve.</td></tr>
+<tr><td>Quaternion: q and −q</td><td>§5.4</td><td>Both quaternions give the same DCM.</td></tr>
+<tr><td>First-order DCM / Renormalized / Coning</td><td>§8</td><td>\(\det R\) and \(\|R^\top R-I\|\) grow; renormalising fixes those but not the attitude error; coning error falls with step size.</td></tr>
+</table>
+<p>The step-by-step walkthrough and lab sheet are in Tutorial 10.</p>
+</div>
+
+<h2>12. Practice problems</h2>
+<ol>
+<li>Write \(R_x(90^\circ)\) and use it to rotate \([0,1,0]\). Describe the result in words.</li>
+<li>A DCM has first column \([0,\ -1,\ 0]\) and third column \([0,0,1]\) (NED). Which way does the nose point? What is the yaw?</li>
+<li>Show that \([\mathbf a]_\times\mathbf a = \mathbf 0\), and explain what that means physically for \(\dot R=R[\boldsymbol\omega]_\times\).</li>
+<li>A ROS node reports yaw 135°. What is the NED yaw, and which compass direction is the robot facing?</li>
+<li>Give the quaternion for a 180° rotation about the x axis. Is it different from the quaternion for −180° about x?</li>
+<li>Explain why \(\det R=-1\) can never come from integrating a physical rotation rate, but can come from a bad calibration matrix.</li>
+<li>A filter's attitude estimate is \(q_1=[0.7071, 0, 0, 0.7071]\) and a reference is \(q_2=[-0.7071, 0, 0, -0.7071]\). What is the true attitude error? What does a naive difference \(q_1-q_2\) suggest?</li>
+<li>Integrating at 200 Hz, how large is the per-step rotation for a 500°/s spin? Would a first-order DCM step be acceptable?</li>
+</ol>
+
+<h2>13. Summary of key equations</h2>
+<table>
+<tr><th>Quantity</th><th>Equation</th></tr>
+<tr><td>Frame change</td><td>\(\mathbf v^n=R^n_b\mathbf v^b,\quad R^b_n=(R^n_b)^\top\)</td></tr>
+<tr><td>ZYX attitude</td><td>\(R^n_b=R_z(\psi)R_y(\theta)R_x(\phi)\)</td></tr>
+<tr><td>Euler from DCM</td><td>\(\theta=-\arcsin R_{31},\ \phi=\operatorname{atan2}(R_{32},R_{33}),\ \psi=\operatorname{atan2}(R_{21},R_{11})\)</td></tr>
+<tr><td>NED → ROS</td><td>\(\psi_R=90^\circ-\psi_N,\ \theta_R=-\theta_N,\ \phi_R=\phi_N\)</td></tr>
+<tr><td>Quaternion</td><td>\(q=[\cos\frac\alpha2,\ \hat n\sin\frac\alpha2],\quad q\equiv-q\)</td></tr>
+<tr><td>Kinematics</td><td>\(\dot R=R[\boldsymbol\omega]_\times,\quad \dot q=\frac12 q\otimes[0,\boldsymbol\omega]\)</td></tr>
+<tr><td>Exp-map step</td><td>\(q_{k+1}=q_k\otimes[\cos\frac{\|\boldsymbol\omega\|\Delta t}{2},\ \hat{\boldsymbol\omega}\sin\frac{\|\boldsymbol\omega\|\Delta t}{2}]\)</td></tr>
+<tr><td>Gimbal-lock sensitivity</td><td>\(\dot\psi=(\sin\phi\,\omega_y+\cos\phi\,\omega_z)/\cos\theta\)</td></tr>
+</table>
+
+<h2>14. Answers to practice problems</h2>
+<ol>
+<li class="answer">\(R_x(90^\circ)=\begin{bmatrix}1&0&0\\0&0&-1\\0&1&0\end{bmatrix}\); \([0,1,0]\mapsto[0,0,1]\). In NED: a vector pointing east now points down, as the right wing does after a 90° right roll.</li>
+<li class="answer">The nose points along \([0,-1,0]\) = west. Yaw \(=\operatorname{atan2}(R_{21},R_{11})=\operatorname{atan2}(-1,0)=-90^\circ\) (equivalently 270°).</li>
+<li class="answer">\(\mathbf a\times\mathbf a=\mathbf 0\), since a vector is parallel to itself. Rotating about \(\boldsymbol\omega\) leaves the axis \(\boldsymbol\omega\) itself unchanged: the component of any body axis along \(\boldsymbol\omega\) does not change.</li>
+<li class="answer">\(\psi_N=90^\circ-135^\circ=-45^\circ\), i.e. 315°: the robot faces north-west. (ROS 135° is 135° counter-clockwise from east, which is also north-west.)</li>
+<li class="answer">\(q=[\cos 90^\circ,\ \sin 90^\circ,0,0]=[0,1,0,0]\). For −180°, \(q=[0,-1,0,0]=-q\): the same rotation, as the double cover requires.</li>
+<li class="answer">Integration composes small proper rotations, each with determinant +1, and determinants multiply, so the product can never become −1. A calibration matrix is estimated freely; if an axis sign is flipped (for example, the IMU is mounted upside down but the calibration only swaps one axis), the result can be a reflection.</li>
+<li class="answer">They are the same rotation, so the true error is zero. The naive difference \([1.414, 0, 0, 1.414]\) suggests a huge error. Flip \(q_2\) so that \(q_1\cdot q_2\ge0\) before differencing.</li>
+<li class="answer">\(500^\circ/\text{s}\times 0.005\ \text{s}=2.5^\circ=0.0436\) rad per step. The first-order determinant growth is \(1.0019\) per step, i.e. about \(e^{0.38}\approx1.46\) after 1 s. Not acceptable; use the exponential map.</li>
+</ol>
+
+<h2>15. Further reading</h2>
+<ul>
+<li>J. Solà, <em>Quaternion kinematics for the error-state Kalman filter</em>, arXiv:1711.02508 (2017). The standard robotics reference for quaternions, conventions and error states.</li>
+<li>ROS REP-103, <em>Standard Units of Measure and Coordinate Conventions</em>, and REP-105, <em>Coordinate Frames for Mobile Platforms</em>.</li>
+<li>P. Groves, <em>Principles of GNSS, Inertial, and Multisensor Integrated Navigation Systems</em>, 2nd ed., Artech House, 2013, Ch. 2.</li>
+<li>P. Corke, <em>Robotics, Vision and Control</em>, 3rd ed., Springer, 2023, Ch. 2 (representing position and orientation).</li>
+</ul>

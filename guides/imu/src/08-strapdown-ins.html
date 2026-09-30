@@ -1,0 +1,242 @@
+<!-- title: Guide 8 — Strapdown Inertial Navigation: Mechanisation, Error Growth and Aiding -->
+<div class="overview">
+<p><strong>Demo:</strong> <code>teaching-sims demo ins</code><br>
+<strong>Prerequisites:</strong> Guides 1, 4, 5 and 7 (especially the Kalman filter)<br>
+<strong>Time:</strong> about 2 hours of reading, plus the demo walkthrough (Tutorial 13)</p>
+<p>By the end of this guide you should be able to:</p>
+<ul>
+<li>explain dead reckoning and strapdown mechanisation, and write the navigation equations;</li>
+<li>explain why an attitude error leaks gravity into the horizontal, and quantify it;</li>
+<li>derive the \(t\), \(t^2\) and \(t^3\) error growth laws, and identify the dominant term on a log–log plot;</li>
+<li>explain how zero-velocity updates and position fixes bound the error, and how each can fail;</li>
+<li>list the states of an error-state Kalman filter and say which measurement makes each observable;</li>
+<li>estimate how long an IMU of a given grade can navigate unaided.</li>
+</ul>
+</div>
+
+<h2>1. Why this matters</h2>
+<p>An inertial navigation system (INS) computes position, velocity and attitude from an IMU alone: no satellites, no cameras, no radio. It works in tunnels, under water, indoors and under jamming, and it updates at hundreds of Hz. Its weakness is that every sensor error is integrated once or twice, so the position error grows without bound, often very quickly. Almost every modern localisation system (GNSS/INS, visual–inertial odometry, LiDAR–inertial odometry, legged-robot state estimation) is an INS plus an aiding sensor that keeps the drift in check. This guide explains the drift, and how aiding bounds it.</p>
+
+<h2>2. Key terms</h2>
+<table>
+<tr><th style="width:26%">Term</th><th>Definition</th></tr>
+<tr><td>Dead reckoning</td><td>Estimating the current position by integrating motion from a known start, without external position measurements.</td></tr>
+<tr><td>Strapdown INS</td><td>An INS whose IMU is fixed ("strapped down") to the vehicle, with attitude computed in software. The older alternative mounted the sensors on a gimballed, stabilised platform.</td></tr>
+<tr><td>Mechanisation</td><td>The set of equations that turns IMU outputs into attitude, velocity and position.</td></tr>
+<tr><td>Navigation solution</td><td>The current estimates of position \(\mathbf p^n\), velocity \(\mathbf v^n\) and attitude \(R^n_b\).</td></tr>
+<tr><td>Gravity leakage</td><td>The false horizontal acceleration \(\approx g\,\delta\theta\) produced when an attitude error \(\delta\theta\) resolves gravity in the wrong direction.</td></tr>
+<tr><td>Error budget</td><td>A breakdown of the total error into contributions from each error source.</td></tr>
+<tr><td>Aiding</td><td>Correcting the INS with an external measurement: position (GNSS), velocity (odometry, Doppler), zero velocity, or relative pose (vision, LiDAR).</td></tr>
+<tr><td>ZUPT</td><td>Zero-velocity update: when the vehicle is known to be stationary, "velocity = 0" is used as a measurement.</td></tr>
+<tr><td>Error-state Kalman filter (ESKF)</td><td>A Kalman filter whose states are the <em>errors</em> in the INS solution and sensor biases, rather than the solution itself.</td></tr>
+<tr><td>Schuler period</td><td>84.4 minutes: the natural oscillation period of horizontal INS errors on a spherical Earth.</td></tr>
+<tr><td>Coast time</td><td>How long the INS can run without aiding before its error exceeds a tolerance.</td></tr>
+</table>
+
+<h2>3. Background: integration amplifies errors</h2>
+<p>Integrating a constant \(c\) gives \(c\,t\); integrating again gives \(\tfrac12c\,t^2\); a third time gives \(\tfrac16c\,t^3\). Each integration raises the power of \(t\) by one. An INS integrates gyro rates once (to attitude) and accelerations twice (to position), and an attitude error feeds into the acceleration. So errors in different sensors reach position after one, two or three integrations.</p>
+<figure><img src="img/g_integration_chain.png" alt="Three panels: a constant accelerometer error of 0.05 metres per second squared, the resulting velocity error ramp reaching 3 metres per second, and the position error parabola reaching 90 metres at 60 seconds."><figcaption><strong>Figure 1.</strong> A constant 0.05 m/s² (about 5 mg) accelerometer error becomes a velocity ramp and a quadratic position error: 90 m after one minute.</figcaption></figure>
+
+<h2>4. Strapdown mechanisation</h2>
+<h3>4.1 The equations</h3>
+<p>For robotics ranges and times we can treat the local navigation frame as flat and non-rotating. The mechanisation is then three coupled integrations:</p>
+$$\dot R^n_b=R^n_b[\boldsymbol\omega^b]_\times,\qquad \dot{\mathbf v}^n=R^n_b\,\mathbf f^b+\mathbf g^n,\qquad \dot{\mathbf p}^n=\mathbf v^n .$$
+<ol>
+<li>Integrate the gyro to keep the attitude \(R^n_b\) (Guide 1).</li>
+<li>Rotate the accelerometer's specific force into the navigation frame: \(R^n_b\mathbf f^b\).</li>
+<li>Add gravity back. The accelerometer measures \(\mathbf f=\mathbf a-\mathbf g\) (Guide 4), so \(\mathbf a=\mathbf f+\mathbf g\).</li>
+<li>Integrate to velocity, then to position.</li>
+</ol>
+<figure><img src="img/g_mechanisation.png" alt="Block diagram: gyro feeds attitude; accelerometer and attitude feed a rotation block; then add gravity; then integrate to velocity; then integrate to position."><figcaption><strong>Figure 2.</strong> Strapdown mechanisation. An attitude error made in the top row leaks gravity into the acceleration in the bottom row.</figcaption></figure>
+
+<h3>4.2 Gravity leakage</h3>
+<p>Step 3 cancels gravity only if the attitude is exactly right. If the estimated attitude is tilted by a small angle \(\delta\theta\), the rotated specific force (which is about \(g\) upward) acquires a horizontal component \(g\sin\delta\theta\approx g\,\delta\theta\) that is not cancelled. The INS believes the vehicle is accelerating horizontally.</p>
+<figure><img class="narrow" src="img/g_gravity_leak.png" alt="Side view: the true upward specific force and the INS's tilted idea of level; the component of the specific force along the tilted horizontal is g sin delta theta."><figcaption><strong>Figure 3.</strong> A tilt error \(\delta\theta\) makes part of the 1 g specific force look horizontal.</figcaption></figure>
+<div class="key"><strong>Key idea.</strong> \(0.1^\circ\) of tilt error \(=1.745\times10^{-3}\) rad, which leaks \(9.81\times1.745\times10^{-3}=0.0171\) m/s² \(=1.7\) mg. Attitude accuracy and accelerometer bias are two sides of the same coin: a 0.1° alignment error costs as much as a 1.7 mg accelerometer bias.</div>
+
+<h3>4.3 What the flat-Earth model leaves out</h3>
+<p>Full navigation-grade mechanisation adds the Earth's rotation (15 °/h), transport rate (the navigation frame rotating as you travel over a curved Earth), Coriolis terms, and a gravity model that varies with latitude and height. It also has an unstable vertical channel: height errors change the computed gravity in a way that makes them grow exponentially, so height is always aided by a barometer or GNSS. Over hours, the horizontal tilt errors are bounded by <strong>Schuler</strong> feedback into an oscillation with period \(2\pi\sqrt{R_E/g}=84.4\) min. None of this matters over the seconds-to-minutes horizons of most robots, but it dominates for aircraft and ships.</p>
+
+<h2>5. Unaided error growth</h2>
+<h3>5.1 Deriving the growth laws</h3>
+<p>Follow each error source through the integrations:</p>
+<ul>
+<li><strong>Initial velocity error</strong> \(\delta v\): integrated once, \(\delta p=\delta v\,t\).</li>
+<li><strong>Accelerometer bias</strong> \(b_a\): \(\delta v=b_at\), \(\delta p=\tfrac12b_at^2\).</li>
+<li><strong>Initial tilt</strong> \(\delta\theta\): leaks \(g\,\delta\theta\), which acts like an accelerometer bias: \(\delta p=\tfrac12g\,\delta\theta\,t^2\).</li>
+<li><strong>Pitch/roll gyro bias</strong> \(b_g\): the tilt error grows, \(\delta\theta=b_gt\); the leaked acceleration grows, \(g\,b_gt\); integrating twice more, \(\delta p=\tfrac16g\,b_g\,t^3\).</li>
+<li><strong>Yaw gyro bias</strong> \(\varepsilon\) while moving at speed \(v\): the heading error \(\varepsilon t\) turns forward velocity into a cross-track velocity \(v\,\varepsilon t\), so \(\delta p=\tfrac12v\,\varepsilon\,t^2\) sideways.</li>
+</ul>
+<table>
+<tr><th>Source</th><th>Position error</th><th>Log–log slope</th></tr>
+<tr><td>Initial velocity error \(\delta v\)</td><td>\(\delta v\,t\)</td><td>1</td></tr>
+<tr><td>Accelerometer bias \(b_a\)</td><td>\(\tfrac12b_at^2\)</td><td>2</td></tr>
+<tr><td>Initial tilt \(\delta\theta\)</td><td>\(\tfrac12g\,\delta\theta\,t^2\)</td><td>2</td></tr>
+<tr><td>Yaw gyro bias \(\varepsilon\) at speed \(v\)</td><td>\(\tfrac12v\,\varepsilon\,t^2\) (cross-track)</td><td>2</td></tr>
+<tr><td>Pitch/roll gyro bias \(b_g\)</td><td>\(\tfrac16g\,b_g\,t^3\)</td><td>3</td></tr>
+</table>
+<p>On a log–log plot each term is a straight line with slope equal to its power of \(t\). The largest term at a given time dominates, and because the slopes differ, the dominant term changes with the time horizon: short coasts are dominated by velocity and accelerometer errors, long coasts by gyro bias.</p>
+<figure><img src="img/ins_error_budget.png" alt="Log-log plot of position error against time for each error source: straight lines of slope 1, 2 and 3, with the simulated total following the largest."><figcaption><strong>Figure 4.</strong> Error budget on log–log axes. Each source is a straight line; the simulated total follows whichever is largest.</figcaption></figure>
+
+<h2>6. Aiding bounds the error</h2>
+<h3>6.1 Zero-velocity updates</h3>
+<p>If the vehicle is stationary, its true velocity is exactly zero. Feeding "\(\mathbf v=0\)" to a Kalman filter as a measurement resets the velocity error, and, through the filter's correlations, corrects tilt and accelerometer bias too. Foot-mounted pedestrian navigation applies a ZUPT at every footstep, when the shoe is flat on the ground, and achieves errors under 1 % of distance travelled with consumer IMUs.</p>
+<div class="warn"><strong>The detector is the weak link.</strong> A ZUPT detector must decide from the IMU when the vehicle is stationary, typically by thresholding the gyro rate and the deviation of \(\|\mathbf f\|\) from \(g\). But a vehicle cruising at <em>constant velocity</em> produces the same IMU readings as a stationary one: no rotation and \(\|\mathbf f\|=g\). A false ZUPT during cruise tells the filter the velocity is zero when it is not, which is far worse than no ZUPT. Vehicles confirm stops with wheel speed, vision or a known context (e.g. a foot's stance phase).</div>
+
+<h3>6.2 Position and velocity fixes</h3>
+<p>GNSS, wheel odometry, visual odometry and LiDAR scan matching provide position or velocity measurements at a few Hz to tens of Hz. Between fixes the INS drifts; at each fix a Kalman filter pulls the solution back. The error becomes a <strong>sawtooth</strong>: its peak is set by the drift over one fix interval, not over the whole mission.</p>
+<figure><img src="img/ins_aiding.png" alt="Position error against time for an unaided INS growing without bound, an INS with zero-velocity updates bounded during stops, and an INS with periodic position fixes showing a sawtooth."><figcaption><strong>Figure 5.</strong> Unaided, ZUPT-aided and fix-aided error. Aiding does not remove drift; it resets it.</figcaption></figure>
+
+<h3>6.3 The error-state Kalman filter</h3>
+<p>The demo's filter only estimates position and velocity, so the heading error is never corrected and the sawtooth peaks still creep upward. A full GNSS/INS or VIO filter is an <strong>error-state Kalman filter</strong> (ESKF). The INS runs the nonlinear mechanisation at full rate; the filter estimates the small errors in it, and feeds them back:</p>
+$$\delta\mathbf x=\big[\delta\mathbf p,\ \delta\mathbf v,\ \delta\boldsymbol\theta,\ \mathbf b_a,\ \mathbf b_g\big]\quad(15\text{ states}).$$
+<table>
+<tr><th>State</th><th>Made observable by</th></tr>
+<tr><td>\(\delta\mathbf p\)</td><td>position fixes (GNSS, map matching, loop closure)</td></tr>
+<tr><td>\(\delta\mathbf v\)</td><td>velocity fixes, ZUPT, or position fixes over time</td></tr>
+<tr><td>Roll and pitch errors</td><td>velocity/position measurements (through gravity leakage), or the accelerometer at rest</td></tr>
+<tr><td>Yaw error</td><td>a heading reference, or horizontal <em>acceleration</em> while aided (turns and speed changes make yaw error visible)</td></tr>
+<tr><td>\(\mathbf b_a\)</td><td>aiding over time; the horizontal components are hard to separate from tilt until the vehicle manoeuvres</td></tr>
+<tr><td>\(\mathbf b_g\)</td><td>aiding over time, via the attitude errors they cause</td></tr>
+</table>
+<p>The error-state form is preferred because the errors are small (so linearisation is accurate), the attitude error can be a 3-vector without singularities (Guide 1 §5.3), and the filter can run slower than the IMU.</p>
+
+<h2>7. How long can you coast?</h2>
+<p>To budget a coast:</p>
+<ol>
+<li>Take the <em>residual</em> errors after calibration and online estimation: typically the bias instability of the gyro and accelerometer, plus ARW and VRW (Guide 5). If the turn-on bias is not calibrated or estimated, use that instead.</li>
+<li>Evaluate each growth law at the coast time and sum (or take the largest).</li>
+<li>The time at which the total reaches your tolerance is the coast time. Its inverse sets the minimum aiding rate.</li>
+</ol>
+<figure><img src="img/ins_grades.png" alt="Position error against time for consumer, industrial and tactical IMU grades; tactical stays below a metre over a minute while consumer reaches tens of metres."><figcaption><strong>Figure 6.</strong> Unaided position error over one minute for three grades (calibrated). Better grades buy longer coasts.</figcaption></figure>
+<p>Rule of thumb for robotics: consumer MEMS is fine when aiding arrives at 1–10 Hz. Unaided coasting beyond a second or two needs a better grade, or motion constraints such as ZUPT, or non-holonomic constraints (a wheeled vehicle cannot move sideways).</p>
+
+<h2>8. Worked examples</h2>
+
+<div class="example">
+<h4>Example 8.1 — Tilt equals bias</h4>
+<p><strong>Problem.</strong> An INS starts with a 0.1° pitch alignment error. Find the equivalent accelerometer bias and the position error after 60 s.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(\delta\theta=0.1^\circ=1.745\times10^{-3}\) rad.</li>
+<li>Leaked acceleration: \(g\,\delta\theta=9.807\times1.745\times10^{-3}=0.0171\) m/s² \(=1.75\) mg.</li>
+<li>\(\delta p=\tfrac12(0.0171)(60^2)=30.8\) m.</li>
+</ol>
+<p><strong>Answer.</strong> 30.8 m after one minute; the demo's "0.1 deg tilt = 1.7 mg bias" scenario gives 30.8 m.</p>
+</div>
+
+<div class="example">
+<h4>Example 8.2 — The cubic term</h4>
+<p><strong>Problem.</strong> A pitch gyro has a residual bias of 0.01 °/s. Find the position error at 30 s and at 60 s.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(b_g=0.01^\circ/\text s=1.745\times10^{-4}\) rad/s.</li>
+<li>\(\delta p(30)=\tfrac16(9.807)(1.745\times10^{-4})(30^3)=\tfrac16(1.711\times10^{-3})(27\,000)=7.7\) m.</li>
+<li>\(\delta p(60)=\tfrac16(1.711\times10^{-3})(216\,000)=61.6\) m.</li>
+</ol>
+<p><strong>Interpretation.</strong> Doubling the time multiplies the error by \(2^3=8\). The demo's "Pitch gyro bias: t^3" scenario reaches 61.6 m at 60 s.</p>
+</div>
+
+<div class="example">
+<h4>Example 8.3 — Yaw bias on a straight road</h4>
+<p><strong>Problem.</strong> A robot drives straight at 5 m/s with an uncorrected yaw-gyro bias of 0.2 °/s. How far off track is it after 20 s?</p>
+<p><strong>Solution.</strong> \(\varepsilon=0.2^\circ/\text s=3.49\times10^{-3}\) rad/s. Cross-track error \(\tfrac12v\varepsilon t^2=\tfrac12(5)(3.49\times10^{-3})(400)=3.5\) m.</p>
+<p><strong>Interpretation.</strong> The heading error is then 4°. The small-angle formula holds while \(\varepsilon t\) stays small; on a circle (the demo's "Yaw gyro bias on a circle") the error shows up as a spiral.</p>
+</div>
+
+<div class="example">
+<h4>Example 8.4 — Coast budget for three grades</h4>
+<p><strong>Problem.</strong> A calibrated IMU coasts for 60 s on a straight path at 5 m/s. The residuals are the bias instabilities: accelerometer 100 / 20 / 10 µg and gyro 20 / 3 / 0.5 °/h for consumer / industrial / tactical. Which term dominates, and what total should you expect?</p>
+<p><strong>Solution.</strong> Consumer:</p>
+<ol>
+<li>Accel: \(b_a=100\times10^{-6}\times9.807=9.8\times10^{-4}\) m/s², so \(\tfrac12b_at^2=1.8\) m.</li>
+<li>Pitch gyro: \(b_g=20/3600=5.56\times10^{-3}\) °/s \(=9.7\times10^{-5}\) rad/s, so \(\tfrac16g\,b_gt^3=34\) m.</li>
+<li>Yaw gyro: \(\tfrac12v\,\varepsilon\,t^2=\tfrac12(5)(9.7\times10^{-5})(3600)=0.9\) m.</li>
+</ol>
+<p>The \(t^3\) gyro term dominates: about 34 m (the demo shows 31 m, as the terms partly cancel). Repeating for industrial gives about 5 m, and for tactical under 1 m (demo: 4.5 m and 0.55 m).</p>
+<p><strong>Interpretation.</strong> For long coasts, the gyro, not the accelerometer, sets the error, because its error is integrated three times.</p>
+</div>
+
+<div class="example">
+<h4>Example 8.5 — Fixes every second</h4>
+<p><strong>Problem.</strong> GNSS arrives at 1 Hz and the INS velocity is well corrected at each fix. The consumer accelerometer is <em>not</em> calibrated (turn-on bias 40 mg). Estimate the peak position error between fixes. What if fixes drop out for 10 s?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(b_a=40\times10^{-3}\times9.807=0.392\) m/s².</li>
+<li>Over 1 s: \(\tfrac12(0.392)(1^2)=0.20\) m, small compared with GNSS noise.</li>
+<li>Over 10 s: \(\tfrac12(0.392)(100)=19.6\) m.</li>
+</ol>
+<p><strong>Interpretation.</strong> Frequent aiding hides a poor IMU. An outage exposes it, which is exactly why the filter should estimate \(\mathbf b_a\) while fixes are available: after estimation the residual (100 µg) gives only 0.05 m over the same 10 s.</p>
+</div>
+
+<div class="example">
+<h4>Example 8.6 — The Schuler period</h4>
+<p><strong>Problem.</strong> Compute the Schuler period with Earth radius \(R_E=6371\) km.</p>
+<p><strong>Solution.</strong> \(T=2\pi\sqrt{R_E/g}=2\pi\sqrt{6.371\times10^6/9.807}=2\pi\times806=5064\) s \(=84.4\) min.</p>
+<p><strong>Interpretation.</strong> This is the period of a pendulum as long as the Earth's radius. Over a few minutes it has no effect, which is why the robotics growth laws are polynomial.</p>
+</div>
+
+<h2>9. Common mistakes</h2>
+<ul>
+<li>Forgetting to add gravity back after rotating the specific force, or adding it with the wrong sign for the frame (NED \(+g\) down, ENU \(-g\) along up).</li>
+<li>Budgeting a coast with the accelerometer bias only, and missing the \(t^3\) gyro term.</li>
+<li>Trusting an IMU-only stationarity detector on a wheeled or flying vehicle.</li>
+<li>Estimating position and velocity but not attitude and biases, so the aiding hides, rather than fixes, the underlying errors.</li>
+<li>Assuming a "calibrated" IMU has zero bias. Calibration removes the turn-on bias; bias instability remains.</li>
+</ul>
+
+<h2>10. Using the demo</h2>
+<div class="demo">
+<p>Run <code>teaching-sims demo ins</code>:</p>
+<table>
+<tr><th>Scenario</th><th>Concept</th><th>What to look for</th></tr>
+<tr><td>Perfect sensors / 0.1 deg tilt = 1.7 mg bias</td><td>§4, Ex. 8.1</td><td>The mechanisation diagram shows the leaked acceleration; about 30 m at 60 s.</td></tr>
+<tr><td>Accel bias: t^2 / Pitch gyro bias: t^3 / Yaw gyro bias on a circle</td><td>§5, Ex. 8.2–8.3</td><td>Slopes 2 and 3 on the log–log plot; a spiralling path.</td></tr>
+<tr><td>Error budget (all terms)</td><td>§5</td><td>Which term dominates at 1, 10 and 100 s.</td></tr>
+<tr><td>Stop-and-go / Zero-velocity updates / ZUPT detector fooled</td><td>§6.1</td><td>Drift while parked; ZUPT stops it; false stops during cruise wreck it.</td></tr>
+<tr><td>Position fixes (GNSS / odometry)</td><td>§6.2</td><td>A sawtooth; change the fix interval.</td></tr>
+<tr><td>Consumer IMU, one minute unaided</td><td>§7, Ex. 8.4</td><td>Switch grades; untick "calibrated".</td></tr>
+</table>
+<p>See Tutorial 13 for the walkthrough and lab sheet.</p>
+</div>
+
+<h2>11. Practice problems</h2>
+<ol>
+<li>An INS has an initial velocity error of 0.1 m/s. What position error results after 60 s? How does this compare with Example 8.1?</li>
+<li>What tilt error is equivalent to a 5 mg accelerometer bias?</li>
+<li>A parked robot's unaided INS position drifts. Give two physical reasons, and the single measurement that stops the drift.</li>
+<li>Why is \(t^3\) growth associated with the pitch and roll gyros but not the yaw gyro?</li>
+<li>GNSS fixes arrive every 5 s. Using the calibrated consumer figures of Example 8.4, which term dominates the peak error between fixes, and roughly how large is it?</li>
+<li>A warehouse robot has wheel odometry at 50 Hz and a consumer IMU. Which ESKF states are observable, and which need an additional sensor?</li>
+<li>Explain why a ZUPT improves the tilt estimate, not just the velocity.</li>
+</ol>
+
+<h2>12. Summary of key equations</h2>
+<table>
+<tr><th>Quantity</th><th>Equation</th></tr>
+<tr><td>Mechanisation</td><td>\(\dot R=R[\boldsymbol\omega]_\times,\quad \dot{\mathbf v}^n=R\mathbf f^b+\mathbf g^n,\quad \dot{\mathbf p}^n=\mathbf v^n\)</td></tr>
+<tr><td>Gravity leakage</td><td>\(\delta a\approx g\,\delta\theta\); 0.1° ≡ 1.7 mg</td></tr>
+<tr><td>Growth laws</td><td>\(\delta v\,t;\ \tfrac12b_at^2;\ \tfrac12g\delta\theta t^2;\ \tfrac12v\varepsilon t^2;\ \tfrac16gb_gt^3\)</td></tr>
+<tr><td>ESKF state</td><td>\([\delta\mathbf p,\ \delta\mathbf v,\ \delta\boldsymbol\theta,\ \mathbf b_a,\ \mathbf b_g]\)</td></tr>
+<tr><td>Schuler period</td><td>\(2\pi\sqrt{R_E/g}=84.4\) min</td></tr>
+</table>
+
+<h2>13. Answers to practice problems</h2>
+<ol>
+<li class="answer">\(0.1\times60=6\) m, growing only linearly. Example 8.1's tilt gives 30.8 m because it grows quadratically.</li>
+<li class="answer">\(\delta\theta=b_a/g=5\times10^{-3}\) rad \(=0.29^\circ\).</li>
+<li class="answer">Accelerometer bias and tilt error (leaked gravity) both look like acceleration; gyro bias makes the tilt error grow. A ZUPT (velocity = 0) stops it.</li>
+<li class="answer">A pitch or roll error leaks gravity (9.81 m/s², always present) into the horizontal, adding two more integrations. A yaw error only rotates the existing horizontal velocity, which is zero when stationary and \(v\) when moving, so it gives \(t^2\) growth proportional to speed.</li>
+<li class="answer">At \(t=5\) s: gyro \(t^3\) term \(\tfrac16(9.807)(9.7\times10^{-5})(125)=0.02\) m; accelerometer \(\tfrac12(9.8\times10^{-4})(25)=0.012\) m. Both are centimetres, below GNSS noise. The velocity error left after each fix usually dominates instead (e.g. 0.1 m/s × 5 s = 0.5 m).</li>
+<li class="answer">Odometry gives forward velocity (and zero lateral/vertical velocity via non-holonomic constraints), making \(\delta\mathbf v\), roll/pitch, \(\mathbf b_a\) and the horizontal \(\mathbf b_g\) observable. Absolute position and yaw drift slowly (yaw only through turning geometry); they need a map, landmarks, a magnetometer or GNSS.</li>
+<li class="answer">If the tilt is wrong, leaked gravity makes the INS velocity grow while stationary. The ZUPT observes that velocity as an error; the filter's covariance links velocity error to tilt error, so part of the correction goes into the attitude.</li>
+</ol>
+
+<h2>14. Further reading</h2>
+<ul>
+<li>P. Groves, <em>Principles of GNSS, Inertial, and Multisensor Integrated Navigation Systems</em>, 2nd ed., Artech House, 2013, Ch. 5 (inertial navigation), 14 (INS error modelling) and 16 (INS/GNSS integration).</li>
+<li>O. Woodman, "An introduction to inertial navigation", Cambridge TR UCAM-CL-TR-696, 2007.</li>
+<li>I. Skog et al., "Zero-velocity detection: an algorithm evaluation", <em>IEEE Trans. Biomedical Engineering</em>, 57(11), 2010.</li>
+<li>J. Solà, <em>Quaternion kinematics for the error-state Kalman filter</em>, arXiv:1711.02508, §5–7.</li>
+<li>C. Forster et al., "On-manifold preintegration for real-time visual–inertial odometry", <em>IEEE Trans. Robotics</em>, 33(1), 2017.</li>
+</ul>

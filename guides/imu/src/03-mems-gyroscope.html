@@ -1,0 +1,210 @@
+<!-- title: Guide 3 — How a MEMS Gyroscope Works -->
+<div class="overview">
+<p><strong>Demo:</strong> <code>teaching-sims demo mems-gyro</code><br>
+<strong>Prerequisites:</strong> Guide 2 (spring–mass–damper, resonance), cross products, trigonometric identities<br>
+<strong>Time:</strong> about 1.5 hours of reading, plus the demo walkthrough (Tutorial 16)</p>
+<p>By the end of this guide you should be able to:</p>
+<ul>
+<li>explain what the Coriolis effect is, and derive the Coriolis acceleration on a vibrating mass;</li>
+<li>explain why a MEMS gyro vibrates at resonance and holds its amplitude constant;</li>
+<li>explain amplitude modulation and synchronous demodulation, and why they recover the rate;</li>
+<li>define quadrature error, and show how a demodulator phase error turns it into bias;</li>
+<li>compare mode-matched and mode-split operation in terms of sensitivity, bandwidth and noise.</li>
+</ul>
+</div>
+
+<h2>1. Why this matters</h2>
+<p>A spinning-wheel gyroscope holds its orientation in space. A MEMS gyroscope has no spinning parts: it is a vibrating mass a fraction of a millimetre across, and it senses rotation through a tiny sideways force. That force is so small that the whole design, from the resonant drive to the demodulation electronics, exists to extract it. The same design choices explain the gyro errors you will model in Guide 5: bias, bias drift with temperature, and the limited bandwidth of high-sensitivity devices.</p>
+
+<h2>2. Key terms</h2>
+<table>
+<tr><th style="width:26%">Term</th><th>Definition</th></tr>
+<tr><td>Angular rate \(\Omega\)</td><td>How fast the sensor rotates, in rad/s or deg/s (1 rad/s = 57.3 °/s). Here the rate about the sensitive axis (z).</td></tr>
+<tr><td>Rotating (non-inertial) frame</td><td>A frame that turns with the sensor. Newton's laws in it need extra, apparent forces.</td></tr>
+<tr><td>Coriolis acceleration</td><td>The apparent acceleration \(-2\boldsymbol\Omega\times\mathbf v\) of a body moving with velocity \(\mathbf v\) in a frame rotating at \(\boldsymbol\Omega\). It is perpendicular to both.</td></tr>
+<tr><td>Drive mode</td><td>The vibration deliberately excited along x, at the drive resonance \(\omega_d\).</td></tr>
+<tr><td>Sense mode</td><td>The vibration along y, excited by the Coriolis force. Its natural frequency is \(\omega_y\).</td></tr>
+<tr><td>AGC (automatic gain control)</td><td>A feedback loop that holds the drive amplitude constant, so the Coriolis force depends only on \(\Omega\).</td></tr>
+<tr><td>Carrier</td><td>A sinusoid (here at \(\omega_d\)) whose amplitude carries the information.</td></tr>
+<tr><td>Amplitude modulation (AM)</td><td>Encoding a slow signal (the rate) in the amplitude of a fast carrier.</td></tr>
+<tr><td>Synchronous demodulation</td><td>Multiplying the modulated signal by a reference at the carrier frequency and phase, then low-pass filtering, to recover the slow signal. Also called lock-in detection.</td></tr>
+<tr><td>In-phase (I) and quadrature (Q)</td><td>The two components of a signal at the carrier frequency: aligned with the reference, and 90° from it.</td></tr>
+<tr><td>Quadrature error</td><td>Sense motion caused by fabrication imperfections coupling drive <em>displacement</em> into the sense axis. It is 90° out of phase with the Coriolis signal.</td></tr>
+<tr><td>Mode split \(\Delta f\)</td><td>The difference between sense and drive resonance frequencies, \(f_y-f_d\).</td></tr>
+<tr><td>Mode matching</td><td>Operating with \(\Delta f=0\), so the sense mode is also at resonance.</td></tr>
+</table>
+
+<h2>3. Background: the Coriolis effect</h2>
+<h3>3.1 An intuition</h3>
+<p>Stand at the centre of a merry-go-round turning anticlockwise and roll a ball straight outwards. To someone on the ground the ball travels in a straight line. To you, turning with the platform, the ball curves off to the right. No real force pushes it sideways; the curve appears because <em>your frame</em> is rotating under the ball. In the rotating frame, that sideways drift is described by the Coriolis acceleration.</p>
+
+<h3>3.2 The equation</h3>
+<p>For a body moving with velocity \(\mathbf v\) relative to a frame rotating at \(\boldsymbol\Omega\), Newton's law written in the rotating frame gains an apparent acceleration:</p>
+$$\mathbf a_{\mathrm{Coriolis}} = -2\,\boldsymbol\Omega\times\mathbf v .$$
+<p>(There is also a centrifugal term, \(-\boldsymbol\Omega\times(\boldsymbol\Omega\times\mathbf r)\), which is negligible at MEMS scales and rates.) Its key properties:</p>
+<ul>
+<li>It is proportional to both \(\Omega\) and \(v\): no motion, no Coriolis. That is why the gyro's mass must be kept moving.</li>
+<li>It is perpendicular to \(\mathbf v\). Velocity along x with rotation about z gives acceleration along y.</li>
+<li>It follows the velocity instant by instant. If \(\mathbf v\) oscillates, the Coriolis force oscillates <em>in phase with the velocity</em>.</li>
+</ul>
+
+<h3>3.3 Why vibrate?</h3>
+<p>Continuous motion in one direction is impossible on a chip, so the mass is made to vibrate: \(x=A\sin\omega_dt\), with velocity \(\dot x=A\omega_d\cos\omega_dt\). With rotation \(\Omega\) about z, the Coriolis acceleration along y is</p>
+$$a_y = -2\Omega\dot x = -2\Omega A\omega_d\cos\omega_dt .$$
+<p>This is a sinusoid at the drive frequency whose <em>amplitude is proportional to the rate</em>. The rate information rides on a carrier, like an AM radio signal. The drive is run at its mechanical resonance so that a small drive force gives a large amplitude \(A\), and the AGC holds \(A\) constant so the scale factor stays fixed.</p>
+<figure><img src="img/g_coriolis_phase.png" alt="Top: drive displacement and drive velocity, 90 degrees apart. Bottom: Coriolis force following velocity, and quadrature force following displacement."><figcaption><strong>Figure 1.</strong> Top: drive displacement and velocity are 90° apart. Bottom: the Coriolis force on the sense axis follows the <em>velocity</em>; the quadrature error force (§5) follows the <em>displacement</em>. The two are 90° apart.</figcaption></figure>
+
+<h2>4. The sensing chain</h2>
+<h3>4.1 Sense-mode dynamics</h3>
+<p>The mass (or an inner frame) can also move along y on its own springs. Its motion obeys a second-order equation like the accelerometer's, driven by the Coriolis term and by an unwanted coupling from the drive:</p>
+$$\ddot y + \frac{\omega_y}{Q}\dot y + \omega_y^2 y = -2\Omega\,\dot x\ -\ \frac{k_{xy}}{m}\,x .$$
+<p>The sense motion is therefore a carrier at \(\omega_d\), filtered by the sense mode's response \(H(\omega_d)=1/(\omega_y^2-\omega_d^2+j\omega_d\omega_y/Q)\). With Coriolis only, the mass traces an ellipse in the x–y plane: x and y are 90° apart.</p>
+<figure><img class="narrow" src="img/g_mass_path.png" alt="Left: an ellipse traced by the proof mass when rotation is present. Right: a tilted straight line traced when only quadrature coupling is present."><figcaption><strong>Figure 2.</strong> Proof-mass path over one drive cycle (sense motion exaggerated). Coriolis motion is 90° from the drive and traces an ellipse; quadrature motion is in phase with the drive and traces a tilted line.</figcaption></figure>
+
+<h3>4.2 Synchronous demodulation</h3>
+<p>We have a signal \(y(t) = Y(t)\cos(\omega_dt)\) whose slowly varying amplitude \(Y(t)\) is proportional to the rate. To recover \(Y\), multiply by a reference at the same frequency and phase:</p>
+$$y(t)\cdot2\cos(\omega_dt) = 2Y\cos^2(\omega_dt) = Y + Y\cos(2\omega_dt).$$
+<p>The product contains the wanted slow term \(Y\) plus a ripple at twice the carrier frequency. A low-pass filter removes the ripple, leaving \(Y\), the rate (after scaling by the known sensitivity).</p>
+<figure><img src="img/g_demodulation.png" alt="Three panels: an amplitude-modulated carrier; the product with the reference showing a DC level plus a 2f ripple; and the low-pass output following the true rate steps."><figcaption><strong>Figure 3.</strong> Synchronous demodulation, with the carrier slowed to 200 Hz so it is visible. The rate steps up and then down; after multiplication and low-pass filtering, the output follows it with a small delay set by the filter.</figcaption></figure>
+<div class="key"><strong>Key idea.</strong> Demodulation is phase-sensitive. A signal exactly 90° from the reference averages to zero after multiplication, because \(\sin\cdot\cos\) averages to zero. That is how the gyro rejects quadrature error, and why a phase error in the reference is so damaging.</div>
+<p>The reference is the drive <em>velocity</em>, delayed by the sense mode's phase \(\angle H(\omega_d)\) (which the manufacturer calibrates). Real gyros compute both the I channel (rate) and the Q channel (quadrature), and often use the Q channel to monitor or null the quadrature.</p>
+
+<h2>5. Quadrature error and bias</h2>
+<p>Etching is never perfect. If the springs are slightly skewed, driving the mass along x also pushes it a little along y, in proportion to the <em>displacement</em> \(x\). This is the \(k_{xy}x/m\) term. Expressed as the rate that would produce the same sense amplitude, it is</p>
+$$\Omega_q = \frac{k_{xy}}{2m\omega_d}.$$
+<p>\(\Omega_q\) is often <strong>hundreds of deg/s</strong>, far larger than the rates you want to measure. It is only rejected because it is 90° from the Coriolis signal. If the demodulator's reference has a phase error \(\varphi\), the output becomes</p>
+$$\hat\Omega = \Omega\cos\varphi - \Omega_q\sin\varphi .$$
+<figure><img class="narrow" src="img/g_iq_phasor.png" alt="Phasor diagram: a small Coriolis arrow on the I axis, a large quadrature arrow on the Q axis, and a demodulator axis rotated by phi; the projection of the quadrature onto that axis is a bias."><figcaption><strong>Figure 4.</strong> Phasor view. The demodulator measures the projection of the sense signal onto its axis. Rotating that axis by \(\varphi\) picks up a slice of the large quadrature: \(-\Omega_q\sin\varphi\), a bias.</figcaption></figure>
+<figure><img class="narrow" src="img/mems_gyro_quadrature.png" alt="Rate bias against demodulator phase error for 200 deg/s quadrature; simulated points lie on the minus 200 sin phi curve."><figcaption><strong>Figure 5.</strong> Bias against phase error for 200 °/s-equivalent quadrature: the simulation matches \(-\Omega_q\sin\varphi\).</figcaption></figure>
+<p>The sense-mode phase depends on \(\omega_y\) and \(Q\), and both drift with temperature, so \(\varphi\) and hence the bias drift too. This is a root cause of turn-on bias and in-run bias instability (Guide 5). Manufacturers fight it with quadrature-nulling electrodes, phase calibration and temperature compensation.</p>
+
+<h2>6. Mode matching: sensitivity vs bandwidth</h2>
+<p>The sense amplitude per unit rate is set by \(|H(\omega_d)|\):</p>
+<ul>
+<li><strong>Mode split</strong> by \(\Delta\omega=\omega_y-\omega_d\): \(|H|\approx 1/(2\omega_d\Delta\omega)\). The sense mode is off resonance, so the sensitivity is modest, but the rate response is flat up to roughly \(\Delta f\): a fast sensor.</li>
+<li><strong>Mode matched</strong> (\(\omega_y=\omega_d\)): \(|H|=Q/\omega_d^2\). The sense mode is at resonance, so the motion is about \(Q\) times larger per deg/s, and the rate noise is lower. But a resonance with quality factor \(Q\) takes about \(Q\) cycles to build up, so the rate bandwidth shrinks to about \(f_d/(2Q)\).</li>
+</ul>
+<figure><img src="img/mems_gyro_modes.png" alt="Rate response against rate frequency for mode splits of 0, 100 and 300 Hz; matched mode has the highest sensitivity but the lowest bandwidth."><figcaption><strong>Figure 6.</strong> Rate frequency response for three mode splits. Matched mode is the most sensitive and the slowest.</figcaption></figure>
+<p>Consumer MEMS gyros typically run split-mode for robustness and bandwidth. Navigation-grade MEMS push toward matched mode and recover bandwidth with closed-loop <em>force rebalance</em>: electrodes actively hold the sense motion at zero, and the force required becomes the output, with a bandwidth set by the control loop rather than by \(Q\).</p>
+
+<h2>7. Worked examples</h2>
+
+<div class="example">
+<h4>Example 3.1 — How big is the Coriolis acceleration?</h4>
+<p><strong>Problem.</strong> The demo drives a mass at \(f_d=5\) kHz with amplitude \(A=5\) µm. Find the peak drive velocity and the peak Coriolis acceleration for a 100 °/s rotation.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>\(\omega_d=2\pi\times5000=31\,416\) rad/s.</li>
+<li>\(v_{\max}=A\omega_d=(5\times10^{-6})(31\,416)=0.157\) m/s.</li>
+<li>\(\Omega=100^\circ/\text{s}=1.745\) rad/s.</li>
+<li>\(a_{\max}=2\Omega v_{\max}=2(1.745)(0.157)=0.548\) m/s² \(\approx0.056\,g\).</li>
+</ol>
+<p><strong>Interpretation.</strong> A brisk 100 °/s turn produces only 0.056 g of Coriolis acceleration, and it oscillates at 5 kHz. The Earth's rotation (15 °/h \(=7.3\times10^{-5}\) rad/s) gives \(2.3\times10^{-5}\) m/s², about 2 µg. That is why consumer MEMS gyros cannot sense Earth rate.</p>
+</div>
+
+<div class="example">
+<h4>Example 3.2 — Sense displacement, split vs matched</h4>
+<p><strong>Problem.</strong> Using Example 3.1, find the sense amplitude for 100 °/s with (a) a 300 Hz mode split and (b) matched modes with \(Q=200\).</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>(a) \(|H|\approx1/|\omega_y^2-\omega_d^2|=1/\big((2\pi)^2(5300^2-5000^2)\big)=1/(39.48\times3.09\times10^6)=8.2\times10^{-9}\) s².
+<br>\(y=0.548\times8.2\times10^{-9}=4.5\times10^{-9}\) m = 4.5 nm, i.e. 45 pm per °/s.</li>
+<li>(b) \(|H|=Q/\omega_d^2=200/(9.87\times10^8)=2.03\times10^{-7}\) s².
+<br>\(y=0.548\times2.03\times10^{-7}=1.1\times10^{-7}\) m = 111 nm, i.e. 1.1 nm per °/s.</li>
+</ol>
+<p><strong>Interpretation.</strong> Matching the modes gives about 25× more motion per °/s, which is a big noise advantage (the demo reports 44.9 vs 1111 pm per °/s). The price is bandwidth: see Example 3.4.</p>
+</div>
+
+<div class="example">
+<h4>Example 3.3 — Bias from a phase error</h4>
+<p><strong>Problem.</strong> A gyro has 200 °/s-equivalent quadrature. The demodulator phase is off by 3°. What bias results? What phase accuracy is needed for a bias below 0.1 °/s?</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Bias \(=-\Omega_q\sin\varphi=-200\sin3^\circ=-10.5\) °/s.</li>
+<li>For \(|{\rm bias}|&lt;0.1\): \(\sin\varphi&lt;0.1/200=5\times10^{-4}\), so \(\varphi&lt;0.029^\circ\).</li>
+</ol>
+<p><strong>Interpretation.</strong> The phase must be held to a few hundredths of a degree across temperature. Reducing \(\Omega_q\) itself, by quadrature-nulling electrodes, relaxes that requirement in proportion.</p>
+</div>
+
+<div class="example">
+<h4>Example 3.4 — Rate bandwidth</h4>
+<p><strong>Problem.</strong> Estimate the rate bandwidth of the matched-mode gyro with \(Q=200\) and with \(Q=1000\). Could either measure a 40 Hz vibration of a drone frame?</p>
+<p><strong>Solution.</strong> \(f_{\mathrm{BW}}\approx f_d/(2Q)\):</p>
+<ul>
+<li>\(Q=200\): \(5000/400=12.5\) Hz (the demo computes 12.5 Hz).</li>
+<li>\(Q=1000\): \(5000/2000=2.5\) Hz.</li>
+</ul>
+<p><strong>Answer.</strong> Neither: a 40 Hz rate oscillation would be strongly attenuated. The 300 Hz split-mode device (bandwidth about 460 Hz before the output filter) tracks it easily.</p>
+</div>
+
+<div class="example">
+<h4>Example 3.5 — Demodulation by hand</h4>
+<p><strong>Problem.</strong> The sense signal is \(y=Y_c\cos\omega_dt + Y_q\sin\omega_dt\), with \(Y_c\) from Coriolis and \(Y_q\) from quadrature. Show what the I channel (reference \(2\cos(\omega_dt+\varphi)\)) outputs after low-pass filtering.</p>
+<p><strong>Solution.</strong></p>
+<ol>
+<li>Use \(2\cos a\cos b=\cos(a-b)+\cos(a+b)\) and \(2\sin a\cos b=\sin(a-b)+\sin(a+b)\).</li>
+<li>\(2Y_c\cos\omega_dt\cos(\omega_dt+\varphi)=Y_c[\cos\varphi+\cos(2\omega_dt+\varphi)]\).</li>
+<li>\(2Y_q\sin\omega_dt\cos(\omega_dt+\varphi)=Y_q[-\sin\varphi+\sin(2\omega_dt+\varphi)]\).</li>
+<li>The low-pass filter removes the \(2\omega_d\) terms, leaving \(Y_c\cos\varphi - Y_q\sin\varphi\).</li>
+</ol>
+<p><strong>Answer.</strong> This is exactly \(\hat\Omega=\Omega\cos\varphi-\Omega_q\sin\varphi\) after scaling. With \(\varphi=0\) the quadrature vanishes completely.</p>
+</div>
+
+<h2>8. Common mistakes</h2>
+<ul>
+<li>Thinking a MEMS gyro "holds orientation" like a spinning wheel. It measures <em>rate</em>; orientation comes only from integrating that rate (Guide 5).</li>
+<li>Confusing the drive frequency (kHz, internal) with the rate bandwidth (Hz to hundreds of Hz, what you see at the output).</li>
+<li>Treating bias as a random fixed number. Much of it has a physical cause that drifts with temperature.</li>
+</ul>
+
+<h2>9. Using the demo</h2>
+<div class="demo">
+<p>Run <code>teaching-sims demo mems-gyro</code>:</p>
+<table>
+<tr><th>Scenario</th><th>Concept</th><th>What to look for</th></tr>
+<tr><td>Drive only, no rotation</td><td>§3.3</td><td>The mass moves on a line along x; y = 0.</td></tr>
+<tr><td>Rotation creates Coriolis force</td><td>§4.1–4.2</td><td>The path opens into an ellipse after the step; the rate output rises to 100 °/s.</td></tr>
+<tr><td>Quadrature error (rejected) / Phase error → bias</td><td>§5</td><td>A tilted-line path; the Q channel reads 200 while the rate stays 0, until the phase error is added (bias −10.5 °/s).</td></tr>
+<tr><td>Mode matched / Mode split / Rate bandwidth</td><td>§6</td><td>pm per °/s, noise and step response; a 40 Hz sine is tracked only in split mode.</td></tr>
+</table>
+<p>See Tutorial 16 for the full walkthrough and lab sheet.</p>
+</div>
+
+<h2>10. Practice problems</h2>
+<ol>
+<li>Using the right-hand rule, find the direction of the Coriolis acceleration for velocity along +x and rotation about +z.</li>
+<li>If the AGC fails and the drive amplitude drops by 10 %, what happens to the reported rate for a true 50 °/s?</li>
+<li>A gyro's quadrature is 50 °/s and its phase drifts by 0.2° over temperature. What bias drift results?</li>
+<li>Why does a mode-matched gyro need about \(Q\) drive cycles to respond to a change in rate?</li>
+<li>Explain why the Coriolis signal cannot simply be low-pass filtered directly, without demodulation.</li>
+<li>For the split-mode gyro of Example 3.2, how many picometres of sense motion does 1 °/h produce? Comment.</li>
+</ol>
+
+<h2>11. Summary of key equations</h2>
+<table>
+<tr><th>Quantity</th><th>Equation</th></tr>
+<tr><td>Coriolis acceleration</td><td>\(\mathbf a=-2\boldsymbol\Omega\times\mathbf v\)</td></tr>
+<tr><td>Drive</td><td>\(x=A\sin\omega_dt,\quad\dot x=A\omega_d\cos\omega_dt\)</td></tr>
+<tr><td>Sense dynamics</td><td>\(\ddot y+\frac{\omega_y}{Q}\dot y+\omega_y^2y=-2\Omega\dot x-\frac{k_{xy}}{m}x\)</td></tr>
+<tr><td>Quadrature as a rate</td><td>\(\Omega_q=k_{xy}/(2m\omega_d)\)</td></tr>
+<tr><td>Demodulated output</td><td>\(\hat\Omega=\Omega\cos\varphi-\Omega_q\sin\varphi\)</td></tr>
+<tr><td>Split-mode sensitivity</td><td>\(|H|\approx1/(2\omega_d\Delta\omega)\)</td></tr>
+<tr><td>Matched-mode sensitivity and bandwidth</td><td>\(|H|=Q/\omega_d^2,\quad f_{\mathrm{BW}}\approx f_d/(2Q)\)</td></tr>
+</table>
+
+<h2>12. Answers to practice problems</h2>
+<ol>
+<li class="answer">\(\boldsymbol\Omega\times\mathbf v=\hat z\times\hat x=\hat y\), so \(\mathbf a=-2\Omega v\,\hat y\): along −y.</li>
+<li class="answer">The Coriolis force scales with \(A\), so the sense amplitude falls by 10 % while the calibrated scale factor assumes the old amplitude: the reported rate is 45 °/s, a −10 % scale-factor error.</li>
+<li class="answer">\(\Delta b\approx\Omega_q\,\Delta\varphi=50\times0.2\times\pi/180=0.17\) °/s = 630 °/h, far above an industrial bias-instability spec, so compensation is essential.</li>
+<li class="answer">A resonator's amplitude builds up or decays with time constant \(2Q/\omega_d\), i.e. about \(Q/\pi\) cycles; the sense amplitude cannot follow a rate change faster than that.</li>
+<li class="answer">The rate information is at \(\omega_d\) (kHz), not near DC. A low-pass filter would remove the signal itself; the multiplication shifts it down to DC first.</li>
+<li class="answer">1 °/h = 1/3600 °/s, so \(45\ \text{pm}/3600\approx0.012\) pm, about a thousandth of an atom's diameter. Such rates are only visible after averaging many cycles, and even then the noise dominates. Consumer MEMS gyros cannot resolve Earth rate for this reason.</li>
+</ol>
+
+<h2>13. Further reading</h2>
+<ul>
+<li>C. Acar and A. Shkel, <em>MEMS Vibratory Gyroscopes: Structural Approaches to Improve Robustness</em>, Springer, 2009, Ch. 2–3.</li>
+<li>V. Kaajakari, <em>Practical MEMS</em>, Ch. 20 (gyroscopes).</li>
+<li>Analog Devices, "MEMS gyroscopes: from sensor to system" technical articles.</li>
+</ul>

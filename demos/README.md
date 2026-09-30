@@ -17,7 +17,7 @@ Each script activates `.venv` and starts a demo. From the repo root:
 
 ### IMU
 
-In course order (see `tutorials/IMU-learning-outcomes.md`):
+In course order (see `tutorials/IMU-module-map.md`):
 
 ```bash
 ./demos/attitude.sh --scenario ned_vs_ros          # also: order_matters, coning

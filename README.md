@@ -36,9 +36,9 @@ pytest
 
 ## Course map — IMU (MSc robotics)
 
-Organised around 22 learning outcomes. See
-[tutorials/IMU-learning-outcomes.md](tutorials/IMU-learning-outcomes.md) for the
-outcome → demo → scenario map.
+Organised by topic. See
+[tutorials/IMU-module-map.md](tutorials/IMU-module-map.md) for the
+topic → demo → scenario map.
 
 | # | Demo | Tutorial | Launch |
 | --- | --- | --- | --- |
@@ -50,6 +50,12 @@ outcome → demo → scenario map.
 | 14 | Magnetometer: heading, iron calibration | [12](tutorials/12-magnetometer.md) | `teaching-sims demo magnetometer` |
 | 15 | Attitude fusion: CF, Kalman, Mahony | [11](tutorials/11-complementary.md) | `teaching-sims demo complementary` |
 | 16 | Strapdown INS and aiding | [13](tutorials/13-ins.md) | `teaching-sims demo ins` |
+
+## Study guides (Canvas)
+
+Each IMU demo has a foundational study guide (definitions, explanations, figures,
+worked examples, practice problems with answers) as Canvas-ready HTML. Build with
+`make guides`; see [guides/imu/README.md](guides/imu/README.md) for importing into Canvas.
 
 ## Lecture slides
 

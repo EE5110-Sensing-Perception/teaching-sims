@@ -2,8 +2,7 @@
 
 **Demo:** `teaching-sims demo gyroscope`  
 **Prerequisites:** [10 — Frames and rotations](10-attitude.md), [08 — Accelerometers](08-accelerometer.md); optional [16 — MEMS gyroscope](16-mems-gyro.md) for where bias comes from  
-**Learning outcomes:** LP10, LP11, LP12, LP21 (see [IMU learning outcomes](IMU-learning-outcomes.md))  
-**Slides:** sections C and F of the IMU deck
+**Slides:** sections “Sensor errors and calibration” and “In practice” of the IMU deck
 
 By the end you should be able to:
 
@@ -23,7 +22,7 @@ By the end you should be able to:
 \tilde\omega = (1+s)\,\omega + b_0 + b_{\mathrm{BI}}(t) + b_{\mathrm{RW}}(t) + n(t).
 \]
 
-### 1.2 How each term grows (LP10, LP11)
+### 1.2 How each term grows
 
 | Term | Datasheet unit | Heading error |
 | --- | --- | --- |
@@ -39,7 +38,7 @@ By the end you should be able to:
 - The per-sample noise std at rate \(f_s\) is \(\sigma = N\sqrt{f_s}\).
 - deg/h ÷ 3600 gives deg/s.
 
-### 1.3 Allan variance (LP12)
+### 1.3 Allan variance
 
 Record at rest. For each cluster length \(\tau\), average the rate over consecutive clusters and compute
 
@@ -55,7 +54,7 @@ On a log-log plot:
 
 Trust \(\tau\lesssim T/10\), where \(T\) is the record length. A constant bias is invisible to Allan variance. Expect about ±20 % scatter on \(B\) from a single record of a few hours. Better IMUs need *longer* records, because their floor emerges later.
 
-### 1.4 Choosing a grade (LP21)
+### 1.4 Choosing a grade
 
 Ask two questions: how long must the system coast between aiding updates, and which term dominates over that horizon? Figures are representative, per datasheet class.
 

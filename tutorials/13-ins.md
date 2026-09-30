@@ -2,8 +2,7 @@
 
 **Demo:** `teaching-sims demo ins`  
 **Prerequisites:** Tutorials 08–12 (especially [09 — Gyroscopes](09-gyroscope.md) and [11 — Attitude fusion](11-complementary.md))  
-**Learning outcomes:** LP18–LP21 (see [IMU learning outcomes](IMU-learning-outcomes.md))  
-**Slides:** section E of the IMU deck
+**Slides:** section “Inertial navigation” of the IMU deck
 
 By the end you should be able to:
 
@@ -16,7 +15,7 @@ By the end you should be able to:
 
 ## 1. Principles
 
-### 1.1 Mechanisation (LP18)
+### 1.1 Mechanisation
 
 \[
 \dot{\mathbf R}=\mathbf R[\boldsymbol\omega]_\times,\qquad
@@ -32,7 +31,7 @@ The demo is planar: heading comes from the yaw gyro, with an added **tilt channe
 
 Full navigation-grade mechanisation adds Earth rate, transport rate, Coriolis and the unstable vertical channel. These don't matter over robotics time scales and distances, but they do for long-range navigation.
 
-### 1.2 Unaided error growth (LP19)
+### 1.2 Unaided error growth
 
 | Source | Position error |
 | --- | --- |
@@ -44,7 +43,7 @@ Full navigation-grade mechanisation adds Earth rate, transport rate, Coriolis an
 
 On a log-log plot each source is a straight line with slope 1, 2 or 3. Whichever is highest dominates at that time. Over hours, Schuler feedback turns the tilt terms into an 84-minute oscillation.
 
-### 1.3 Aiding (LP20)
+### 1.3 Aiding
 
 - **Zero-velocity update (ZUPT).** When stationary, \(\mathbf v=0\) is a measurement.
   - Foot-mounted INS applies it at every stance phase.
@@ -53,7 +52,7 @@ On a log-log plot each source is a straight line with slope 1, 2 or 3. Whichever
   - The demo's filter has states \([p, v]\) per axis only, so heading error is never corrected and the peaks still creep up.
   - A full **error-state KF** estimates \(\delta\mathbf p,\delta\mathbf v,\delta\boldsymbol\theta,\mathbf b_a,\mathbf b_g\). This is the core of GNSS/INS, VIO and LIO.
 
-### 1.4 Coasting (LP21)
+### 1.4 Coasting
 
 Take the residual biases after calibration (bias instability, ARW, VRW) and read off the time until the error exceeds your tolerance. That time sets the minimum aiding rate.
 
@@ -124,4 +123,4 @@ Take the residual biases after calibration (bias instability, ARW, VRW) and read
 
 ## 6. Where to go next
 
-Review the full outcome map in [IMU learning outcomes](IMU-learning-outcomes.md). Natural extensions: an error-state EKF with bias states, VIO/LIO (camera or LiDAR as the aiding sensor), and long-range effects (Earth rate, Schuler).
+Review the full outcome map in [IMU module map](IMU-module-map.md). Natural extensions: an error-state EKF with bias states, VIO/LIO (camera or LiDAR as the aiding sensor), and long-range effects (Earth rate, Schuler).

@@ -2,8 +2,7 @@
 
 **Demo:** `teaching-sims demo mems-gyro`  
 **Prerequisites:** [14 — MEMS comb-drive](14-mems-accel.md) (spring–mass–damper, resonance)  
-**Learning outcomes:** LP8, plus the physical origin of gyro bias (LP10) (see [IMU learning outcomes](IMU-learning-outcomes.md))  
-**Slides:** section B of the IMU deck
+**Slides:** section “Inertial sensors” of the IMU deck
 
 By the end you should be able to:
 
